@@ -776,7 +776,7 @@ namespace ZyntraRfidLab
 
     public class GatePortalManager
     {
-        public string ReaderIp = "192.168.1.116";
+        public string ReaderIp = "192.168.1.201";
         public int ReaderPort = 9090;
         public string SerialNumber = "BRD-2204 (4 Puertos SMA)";
         public bool Connected = false;
@@ -945,6 +945,11 @@ namespace ZyntraRfidLab
 
         public bool AutoDiscoverAndConnect(out string msg)
         {
+            if (Connected)
+            {
+                msg = StatusText;
+                return true;
+            }
             CheckUsbEthernetAdapter();
             // 1. Listen briefly for UDP multicast 230.1.1.168:8161 (GMulticast from reader.jar)
             try
@@ -955,7 +960,7 @@ namespace ZyntraRfidLab
                     udp.Client.Bind(new IPEndPoint(IPAddress.Any, 8161));
                     IPAddress mcast = IPAddress.Parse("230.1.1.168");
                     udp.JoinMulticastGroup(mcast);
-                    udp.Client.ReceiveTimeout = 650;
+                    udp.Client.ReceiveTimeout = 450;
                     IPEndPoint ep = new IPEndPoint(IPAddress.Any, 0);
                     byte[] data = udp.Receive(ref ep);
                     if (data != null && data.Length > 0)
@@ -972,18 +977,19 @@ namespace ZyntraRfidLab
             }
             catch { }
 
-            // 2. Parallel TCP probe of common BRD-2204 factory IPs and ports
+            // 2. Parallel TCP probe of BRD-2204 IPs (including 192.168.1.201) and ports
             string[] candidateIps = new string[]
             {
                 ReaderIp,
+                "192.168.1.201",
                 "192.168.1.116",
                 "192.168.1.168",
                 "192.168.1.100",
                 "192.168.1.250",
                 "192.168.1.1",
+                "192.168.0.201",
                 "192.168.0.116",
-                "192.168.0.168",
-                "192.168.0.100"
+                "192.168.0.168"
             };
             int[] candidatePorts = new int[] { 9090, 8160, 6000, 4001 };
 
