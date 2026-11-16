@@ -27,7 +27,7 @@ namespace ZyntraRfidLab
 {
     public static class AutoUpdater
     {
-        public const string CurrentVersion = "1.0.0";
+        public const string CurrentVersion = "1.2.0";
         public static string GithubRepo = "patriciogeis-code/RFIDantenas";
         public static string LastCheckStatus = "v" + CurrentVersion + " (Actualizado)";
         public static string RemoteVersion = CurrentVersion;
@@ -355,13 +355,15 @@ namespace ZyntraRfidLab
                 Task.Run(() => ReadLoop(_cts.Token));
                 Thread.Sleep(80);
 
-                // Initialize in Command Mode: Stop -> GetReaderInfo -> SetPower -> StartInventory
+                // Initialize after USB plug-in: ensure UsbKbdSwitch=0, Stop, GetReaderInfo, SetPower
+                SendFrame(GxProtocol.BuildFrame(0x01, 0x2B, new byte[] { 0x01, 0x01, 0x00 }));
+                Thread.Sleep(180);
                 SendFrame(GxProtocol.BuildFrame(0x02, 0xFF, null));
-                Thread.Sleep(150);
+                Thread.Sleep(140);
                 SendFrame(GxProtocol.BuildFrame(0x01, 0x00, null)); // GetReaderInfo
-                Thread.Sleep(150);
+                Thread.Sleep(140);
                 SendFrame(GxProtocol.BuildFrame(0x02, 0x01, new byte[] { 0x01, (byte)PowerDbm })); // SetPower
-                Thread.Sleep(150);
+                Thread.Sleep(140);
                 LastStatusMessage = "Conectado por USB HID (Canal 64B Activo)";
                 return true;
             }
@@ -371,6 +373,35 @@ namespace ZyntraRfidLab
                 Connected = false;
                 return false;
             }
+        }
+
+        public void HandlePhysicalDisconnect()
+        {
+            Connected = false;
+            Scanning = false;
+            ReadsPerSec = 0;
+            LastStatusMessage = "🔴 Antena desconectada del USB — Esperando conexión...";
+            try { if (_cts != null) _cts.Cancel(); } catch { }
+            try { if (_fsRead != null) _fsRead.Dispose(); } catch { }
+            try { if (_fsWrite != null) _fsWrite.Dispose(); } catch { }
+            try { if (_hRead != null && !_hRead.IsInvalid) _hRead.Close(); } catch { }
+            try { if (_hWrite != null && !_hWrite.IsInvalid) _hWrite.Close(); } catch { }
+        }
+
+        public static bool IsDevicePathPresent(string devPath)
+        {
+            if (string.IsNullOrEmpty(devPath)) return false;
+            try
+            {
+                SafeFileHandle h = CreateFile(devPath, 0, FILE_SHARE_READ | FILE_SHARE_WRITE, IntPtr.Zero, OPEN_EXISTING, 0, IntPtr.Zero);
+                if (!h.IsInvalid)
+                {
+                    h.Close();
+                    return true;
+                }
+            }
+            catch { }
+            return false;
         }
 
         public void Disconnect()
@@ -405,10 +436,12 @@ namespace ZyntraRfidLab
                         _fsWrite.EndWrite(ar);
                         return true;
                     }
+                    HandlePhysicalDisconnect();
                     return false;
                 }
                 catch
                 {
+                    HandlePhysicalDisconnect();
                     return false;
                 }
             }
@@ -549,12 +582,22 @@ namespace ZyntraRfidLab
                 try
                 {
                     var ar = _fsRead.BeginRead(buf, 0, 65, null, null);
-                    while (!token.IsCancellationRequested && !ar.AsyncWaitHandle.WaitOne(200))
+                    while (!token.IsCancellationRequested && !ar.AsyncWaitHandle.WaitOne(250))
                     {
+                        if (!IsDevicePathPresent(DevicePath))
+                        {
+                            HandlePhysicalDisconnect();
+                            return;
+                        }
                     }
                     if (token.IsCancellationRequested) break;
                     int n = _fsRead.EndRead(ar);
-                    if (n > 0 && buf[1] == 0x5A)
+                    if (n <= 0)
+                    {
+                        HandlePhysicalDisconnect();
+                        break;
+                    }
+                    if (buf[1] == 0x5A)
                     {
                         RxPacketsCount++;
                         StringBuilder sbHex = new StringBuilder();
@@ -565,6 +608,10 @@ namespace ZyntraRfidLab
                 }
                 catch
                 {
+                    if (!token.IsCancellationRequested)
+                    {
+                        HandlePhysicalDisconnect();
+                    }
                     break;
                 }
             }
@@ -911,15 +958,17 @@ namespace ZyntraRfidLab
         private int _port = 8090;
         private TcpListener _tcpServer;
         private bool _running = true;
+        private bool _allowExit = false;
+        private readonly object _usbScanLock = new object();
 
         public static UsbGxReaderManager Dc06 = new UsbGxReaderManager { DeviceRole = "DC06", MaxPowerDbm = 27 };
-        public static UsbGxReaderManager Dc01 = new UsbGxReaderManager { DeviceRole = "DC01", MaxPowerDbm = 25, PowerDbm = 18, SerialNumber = "BRD-DC01 (Esperando USB)" };
+        public static UsbGxReaderManager Dc01 = new UsbGxReaderManager { DeviceRole = "DC01", MaxPowerDbm = 25, PowerDbm = 16, SerialNumber = "BRD-DC01 (Esperando USB)" };
         public static GatePortalManager Gate = new GatePortalManager();
 
         public MainForm()
         {
             Text = "Zyntra RFID Lab — Servidor de Antenas y Arco UHF";
-            Size = new Size(480, 240);
+            Size = new Size(495, 290);
             StartPosition = FormStartPosition.CenterScreen;
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
@@ -935,23 +984,24 @@ namespace ZyntraRfidLab
             _trayIcon = new NotifyIcon
             {
                 Icon = this.Icon ?? SystemIcons.Application,
-                Text = "Zyntra RFID Lab (Puerto " + _port + ")",
+                Text = "Zyntra RFID Lab — Activo junto al reloj (Puerto " + _port + ")",
                 Visible = true
             };
             var menu = new ContextMenuStrip();
-            menu.Items.Add("Abrir Consola Web de Antenas", null, (s, e) => OpenBrowser());
-            menu.Items.Add("Reconectar Antenas USB", null, (s, e) => AutoDetectUsbDevices());
+            menu.Items.Add("🌐 Abrir Consola Web de Antenas", null, (s, e) => OpenBrowser());
+            menu.Items.Add("🖥️ Mostrar Ventana de Estado", null, (s, e) => RestoreFromTray());
+            menu.Items.Add("🔄 Forzar Reconexión USB", null, (s, e) => Task.Run(() => ForceReconnectUsbDevices()));
             menu.Items.Add("-");
-            menu.Items.Add("Salir", null, (s, e) => ExitApp());
+            menu.Items.Add("❌ Salir Completamente", null, (s, e) => ExitApp());
             _trayIcon.ContextMenuStrip = menu;
-            _trayIcon.DoubleClick += (s, e) => OpenBrowser();
+            _trayIcon.DoubleClick += (s, e) => RestoreFromTray();
 
             var lblTitle = new Label
             {
                 Text = "⚡ Zyntra RFID Lab — Motor de Antenas Activo",
                 Font = new Font("Segoe UI", 12, FontStyle.Bold),
                 ForeColor = Color.FromArgb(56, 189, 248),
-                Location = new Point(20, 20),
+                Location = new Point(20, 18),
                 AutoSize = true
             };
             _lblStatus = new Label
@@ -959,8 +1009,8 @@ namespace ZyntraRfidLab
                 Text = "Iniciando puente USB HID y servidor en http://localhost:" + _port + " ...",
                 Font = new Font("Segoe UI", 9.5f),
                 ForeColor = Color.FromArgb(203, 213, 225),
-                Location = new Point(20, 55),
-                Size = new Size(425, 70)
+                Location = new Point(20, 50),
+                Size = new Size(445, 72)
             };
             var btnOpen = new Button
             {
@@ -969,35 +1019,58 @@ namespace ZyntraRfidLab
                 BackColor = Color.FromArgb(2, 132, 199),
                 ForeColor = Color.White,
                 FlatStyle = FlatStyle.Flat,
-                Location = new Point(20, 140),
-                Size = new Size(240, 40),
+                Location = new Point(20, 130),
+                Size = new Size(255, 38),
                 Cursor = Cursors.Hand
             };
             btnOpen.Click += (s, e) => OpenBrowser();
 
             var btnReconnect = new Button
             {
-                Text = "🔄 Escanear USB",
+                Text = "🔄 Reconectar USB",
                 Font = new Font("Segoe UI", 9.5f, FontStyle.Regular),
                 BackColor = Color.FromArgb(30, 41, 59),
                 ForeColor = Color.White,
                 FlatStyle = FlatStyle.Flat,
-                Location = new Point(275, 140),
-                Size = new Size(160, 40),
+                Location = new Point(285, 130),
+                Size = new Size(175, 38),
                 Cursor = Cursors.Hand
             };
-            btnReconnect.Click += (s, e) => AutoDetectUsbDevices();
+            btnReconnect.Click += (s, e) => Task.Run(() => ForceReconnectUsbDevices());
+
+            var btnHideTray = new Button
+            {
+                Text = "✅ Dejar Activo en Segundo Plano (Junto al Reloj)",
+                Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
+                BackColor = Color.FromArgb(16, 185, 129),
+                ForeColor = Color.White,
+                FlatStyle = FlatStyle.Flat,
+                Location = new Point(20, 178),
+                Size = new Size(440, 38),
+                Cursor = Cursors.Hand
+            };
+            btnHideTray.Click += (s, e) => HideToTray(true);
 
             Controls.Add(lblTitle);
             Controls.Add(_lblStatus);
             Controls.Add(btnOpen);
             Controls.Add(btnReconnect);
+            Controls.Add(btnHideTray);
+
+            Resize += (s, e) =>
+            {
+                if (WindowState == FormWindowState.Minimized)
+                {
+                    HideToTray(false);
+                }
+            };
 
             Shown += (s, e) =>
             {
                 AutoUpdater.CleanupOldBinary();
                 StartHttpServer();
                 Task.Run(() => AutoDetectUsbDevices());
+                StartUsbWatchdog();
                 Task.Run(() =>
                 {
                     string msg;
@@ -1006,11 +1079,16 @@ namespace ZyntraRfidLab
                         AutoUpdater.ApplySelfUpdate(out msg);
                     }
                 });
-                OpenBrowser();
             };
 
             FormClosing += (s, e) =>
             {
+                if (!_allowExit && e.CloseReason == CloseReason.UserClosing)
+                {
+                    e.Cancel = true;
+                    HideToTray(true);
+                    return;
+                }
                 _running = false;
                 Dc06.Disconnect();
                 Dc01.Disconnect();
@@ -1019,26 +1097,111 @@ namespace ZyntraRfidLab
             };
         }
 
+        private void HideToTray(bool showBalloon)
+        {
+            ShowInTaskbar = false;
+            Hide();
+            if (showBalloon && _trayIcon != null)
+            {
+                _trayIcon.ShowBalloonTip(
+                    2500,
+                    "Zyntra RFID Lab Activo",
+                    "El motor de antenas USB sigue corriendo junto al reloj (Puerto " + _port + ").",
+                    ToolTipIcon.Info
+                );
+            }
+        }
+
+        private void RestoreFromTray()
+        {
+            Show();
+            WindowState = FormWindowState.Normal;
+            ShowInTaskbar = true;
+            Activate();
+        }
+
+        private void StartUsbWatchdog()
+        {
+            Task.Run(() =>
+            {
+                while (_running)
+                {
+                    try
+                    {
+                        Thread.Sleep(1500);
+                        if (Dc06.Connected && !UsbGxReaderManager.IsDevicePathPresent(Dc06.DevicePath))
+                        {
+                            Dc06.HandlePhysicalDisconnect();
+                            UpdateWindowLabel();
+                        }
+                        if (Dc01.Connected && !UsbGxReaderManager.IsDevicePathPresent(Dc01.DevicePath))
+                        {
+                            Dc01.HandlePhysicalDisconnect();
+                            UpdateWindowLabel();
+                        }
+                        if (!Dc06.Connected || !Dc01.Connected)
+                        {
+                            var paths = UsbGxReaderManager.FindAllGxHidPaths();
+                            if (!Dc06.Connected && paths.Count >= 1)
+                            {
+                                AutoDetectUsbDevices();
+                            }
+                            else if (!Dc01.Connected && paths.Count >= 2)
+                            {
+                                AutoDetectUsbDevices();
+                            }
+                        }
+                    }
+                    catch { }
+                }
+            });
+        }
+
+        private void ForceReconnectUsbDevices()
+        {
+            lock (_usbScanLock)
+            {
+                int savedPwr6 = Dc06.PowerDbm;
+                Dc06.Disconnect();
+                Dc01.Disconnect();
+                Thread.Sleep(250);
+                Dc06.PowerDbm = savedPwr6;
+                AutoDetectUsbDevices();
+            }
+        }
+
         private void AutoDetectUsbDevices()
         {
-            var paths = UsbGxReaderManager.FindAllGxHidPaths();
-            if (paths.Count >= 1)
+            lock (_usbScanLock)
             {
-                if (!Dc06.Connected)
+                var paths = UsbGxReaderManager.FindAllGxHidPaths();
+                if (paths.Count == 0)
                 {
-                    Dc06.PowerDbm = 27;
-                    Dc06.Connect(paths[0]);
-                    Dc06.StartInventory(); // Start live reading immediately so user can test tags right away!
+                    if (Dc06.Connected) Dc06.HandlePhysicalDisconnect();
+                    if (Dc01.Connected) Dc01.HandlePhysicalDisconnect();
+                    UpdateWindowLabel();
+                    return;
                 }
-            }
-            if (paths.Count >= 2)
-            {
-                if (!Dc01.Connected)
+                if (paths.Count >= 1)
                 {
-                    Dc01.Connect(paths[1]);
+                    if (!Dc06.Connected || !UsbGxReaderManager.IsDevicePathPresent(Dc06.DevicePath))
+                    {
+                        if (Dc06.PowerDbm <= 0) Dc06.PowerDbm = 27;
+                        if (Dc06.Connect(paths[0]))
+                        {
+                            Dc06.StartInventory();
+                        }
+                    }
                 }
+                if (paths.Count >= 2)
+                {
+                    if (!Dc01.Connected || !UsbGxReaderManager.IsDevicePathPresent(Dc01.DevicePath))
+                    {
+                        Dc01.Connect(paths[1]);
+                    }
+                }
+                UpdateWindowLabel();
             }
-            UpdateWindowLabel();
         }
 
         private void UpdateWindowLabel()
@@ -1068,6 +1231,7 @@ namespace ZyntraRfidLab
 
         private void ExitApp()
         {
+            _allowExit = true;
             _running = false;
             Dc06.Disconnect();
             Dc01.Disconnect();
@@ -1212,7 +1376,7 @@ namespace ZyntraRfidLab
                     }
                     if (path == "/api/usb/reconnect" && method == "POST")
                     {
-                        AutoDetectUsbDevices();
+                        ForceReconnectUsbDevices();
                         SendTcpJson(stream, BuildStateJson());
                         return;
                     }

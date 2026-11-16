@@ -329,7 +329,7 @@
     <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
       <button class="btn btn-dark" onclick="toggleWebAudio()" id="webAudioBtn">🔊 Beep: ON</button>
       <button class="btn btn-dark" onclick="reconnectUsb()">🔄 USB</button>
-      <button class="btn btn-primary" onclick="checkAutoUpdate()" id="btnAutoUpdate">🚀 v1.1.0 (Auto-Update)</button>
+      <button class="btn btn-primary" onclick="checkAutoUpdate()" id="btnAutoUpdate">🚀 v1.2.0 (Auto-Update)</button>
     </div>
   </header>
 
@@ -1248,7 +1248,8 @@
       const d6 = st.dc06;
       document.getElementById('dot-dc06').className = 'status-dot ' + (d6.connected ? 'dot-online' : 'dot-offline');
       document.getElementById('dc06-statusBadge').textContent = d6.status;
-      document.getElementById('dc06-statusBadge').className = 'badge ' + (d6.scanning ? 'badge-emerald' : 'badge-amber');
+      document.getElementById('dc06-statusBadge').className = 'badge ' + (!d6.connected ? 'badge-rose' : (d6.scanning ? 'badge-emerald' : 'badge-amber'));
+      document.getElementById('dc06SvgLed').setAttribute('fill', d6.connected ? (d6.scanning ? '#10b981' : '#f59e0b') : '#ef4444');
       document.getElementById('dc06-serialLbl').textContent = d6.serial;
       document.getElementById('dc06-rpsBadge').textContent = d6.readsPerSec + ' lecturas/s';
 
