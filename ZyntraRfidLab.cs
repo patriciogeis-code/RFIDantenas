@@ -362,9 +362,9 @@ namespace ZyntraRfidLab
                 SendFrame(GxProtocol.BuildFrame(0x02, 0xFF, null));
                 Thread.Sleep(140);
                 SendFrame(GxProtocol.BuildFrame(0x01, 0x00, null)); // GetReaderInfo
-                Thread.Sleep(140);
+                Thread.Sleep(150);
                 SendFrame(GxProtocol.BuildFrame(0x02, 0x01, new byte[] { 0x01, (byte)PowerDbm })); // SetPower
-                Thread.Sleep(140);
+                Thread.Sleep(220);
                 LastStatusMessage = "Conectado por USB HID (Canal 64B Activo)";
                 return true;
             }
@@ -1170,18 +1170,6 @@ namespace ZyntraRfidLab
                             {
                                 AutoDetectUsbDevices();
                             }
-                        }
-                        // Keep-alive inventory burst if BRD-DC06 auto-dormancy paused it
-                        long nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-                        if (Dc06.Connected && Dc06.Scanning && (nowMs - Dc06.LastRxOrPollMs > 1400))
-                        {
-                            Dc06.LastRxOrPollMs = nowMs;
-                            Dc06.SendFrame(GxProtocol.BuildFrame(0x02, 0x10, new byte[] { 0x00, 0x00, 0x00, 0x01, 0x01 }));
-                        }
-                        if (Dc01.Connected && Dc01.Scanning && (nowMs - Dc01.LastRxOrPollMs > 1400))
-                        {
-                            Dc01.LastRxOrPollMs = nowMs;
-                            Dc01.SendFrame(GxProtocol.BuildFrame(0x02, 0x10, new byte[] { 0x00, 0x00, 0x00, 0x01, 0x01 }));
                         }
                     }
                     catch { }
