@@ -1707,17 +1707,36 @@ namespace ZyntraRfidLab
 
     internal static class Program
     {
+        private static void StopOtherRunningInstances()
+        {
+            try
+            {
+                int currentPid = Process.GetCurrentProcess().Id;
+                foreach (Process p in Process.GetProcessesByName("Zyntra RFID Lab"))
+                {
+                    if (p.Id != currentPid)
+                    {
+                        try
+                        {
+                            p.Kill();
+                            p.WaitForExit(2000);
+                        }
+                        catch { }
+                    }
+                }
+            }
+            catch { }
+        }
+
         [STAThread]
         private static void Main()
         {
+            StopOtherRunningInstances();
+            Thread.Sleep(200);
+
             bool createdNew;
             using (new Mutex(true, "ZyntraRfidLab_SingleInstance", out createdNew))
             {
-                if (!createdNew)
-                {
-                    try { Process.Start("http://localhost:8090"); } catch { }
-                    return;
-                }
                 Application.EnableVisualStyles();
                 Application.SetCompatibleTextRenderingDefault(false);
                 Application.Run(new MainForm());
