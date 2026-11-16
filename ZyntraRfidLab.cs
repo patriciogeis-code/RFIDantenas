@@ -988,26 +988,27 @@ namespace ZyntraRfidLab
             BackColor = Color.FromArgb(15, 23, 42);
             ForeColor = Color.White;
 
-            string icoPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "zyntra.ico");
-            if (File.Exists(icoPath))
-            {
-                Icon = new Icon(icoPath);
-            }
+            Icon appIcon = CreateZyntraIcon(new Size(32, 32));
+            Icon trayIconHandle = CreateZyntraIcon(SystemInformation.SmallIconSize);
+            this.Icon = appIcon;
+
+            ContextMenu trayMenu = new ContextMenu();
+            trayMenu.MenuItems.Add("Abrir Consola Web de Antenas (http://localhost:" + _port + ")", (s, e) => OpenBrowser());
+            trayMenu.MenuItems.Add("Mostrar Panel Zyntra RFID Lab", (s, e) => RestoreFromTray());
+            trayMenu.MenuItems.Add("Reconectar Antenas USB", (s, e) => Task.Run(() => ForceReconnectUsbDevices()));
+            trayMenu.MenuItems.Add("-");
+            trayMenu.MenuItems.Add("Salir de Zyntra RFID Lab", (s, e) => ExitApp());
 
             _trayIcon = new NotifyIcon
             {
-                Icon = this.Icon ?? SystemIcons.Application,
-                Text = "Zyntra RFID Lab — Activo junto al reloj (Puerto " + _port + ")",
+                Icon = trayIconHandle,
+                Text = "Zyntra RFID Lab — Activo",
+                ContextMenu = trayMenu,
                 Visible = true
             };
-            var menu = new ContextMenuStrip();
-            menu.Items.Add("🌐 Abrir Consola Web de Antenas", null, (s, e) => OpenBrowser());
-            menu.Items.Add("🖥️ Mostrar Ventana de Estado", null, (s, e) => RestoreFromTray());
-            menu.Items.Add("🔄 Forzar Reconexión USB", null, (s, e) => Task.Run(() => ForceReconnectUsbDevices()));
-            menu.Items.Add("-");
-            menu.Items.Add("❌ Salir Completamente", null, (s, e) => ExitApp());
-            _trayIcon.ContextMenuStrip = menu;
             _trayIcon.DoubleClick += (s, e) => RestoreFromTray();
+
+            EnsureShortcutsAndStartup();
 
             var lblTitle = new Label
             {
@@ -1231,6 +1232,77 @@ namespace ZyntraRfidLab
                 Dc01.Connected ? "CONECTADA" : "Esperando conexión USB",
                 _port
             );
+            if (_trayIcon != null)
+            {
+                _trayIcon.Text = Dc06.Connected
+                    ? ("Zyntra RFID Lab — BRD-DC06 (" + Dc06.PowerDbm + " dBm)")
+                    : "Zyntra RFID Lab — Esperando Antena USB";
+            }
+        }
+
+        private static void EnsureShortcutsAndStartup()
+        {
+            try
+            {
+                string exePath = Application.ExecutablePath;
+                using (RegistryKey rk = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run", true))
+                {
+                    if (rk != null)
+                    {
+                        rk.SetValue("ZyntraRfidLab", "\"" + exePath + "\"");
+                    }
+                }
+                string desktopDir = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+                if (!string.IsNullOrEmpty(desktopDir) && Directory.Exists(desktopDir))
+                {
+                    string lnkPath = Path.Combine(desktopDir, "Zyntra RFID Lab.lnk");
+                    Type shellType = Type.GetTypeFromProgID("WScript.Shell");
+                    if (shellType != null)
+                    {
+                        object shell = Activator.CreateInstance(shellType);
+                        object sc = shellType.InvokeMember("CreateShortcut", BindingFlags.InvokeMethod, null, shell, new object[] { lnkPath });
+                        if (sc != null)
+                        {
+                            Type t = sc.GetType();
+                            t.InvokeMember("TargetPath", BindingFlags.SetProperty, null, sc, new object[] { exePath });
+                            t.InvokeMember("WorkingDirectory", BindingFlags.SetProperty, null, sc, new object[] { Path.GetDirectoryName(exePath) ?? "" });
+                            t.InvokeMember("Description", BindingFlags.SetProperty, null, sc, new object[] { "Zyntra RFID Lab — Control de Antenas y Arco UHF" });
+                            t.InvokeMember("IconLocation", BindingFlags.SetProperty, null, sc, new object[] { exePath + ",0" });
+                            t.InvokeMember("Save", BindingFlags.InvokeMethod, null, sc, null);
+                        }
+                    }
+                }
+            }
+            catch { }
+        }
+
+        private static Icon CreateZyntraIcon(Size targetSize)
+        {
+            try
+            {
+                int w = Math.Max(16, targetSize.Width);
+                int h = Math.Max(16, targetSize.Height);
+                const string b64 = "iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAQNSURBVFhH7Vfbj19TFC6t+6VVKo1rXFqdIgRFUxHVtCqieNCISwWNqLoED148TJtKEUVcEnFpNKqS+gvEo4iISCQIicSlQqKYzoz5zZyzv/V9S9Z0nzrndH7D1MybL/nyO/s7a+81e5219l4zbdr/qAHAjZI+MrP1ZVmuNrPVkkbp7se17ScdKaUHJJUAXgPQS7LX3XslbXD3uWEj6aj2vElFX1/fzLYWcPdDzOwDkr+Y2WNmtsbM7jSzu+ssy3Ktmd2bebuk2wDc5O4Ht9ecEAYGBo4n6QEAu8zsiyCAL+s0s/j9CsAnZpbC3sxubq93QEgpLYldt/WxkFJaRPI3AKti3N/fP1vS/ZLOatt2haQVAK6K8Acr3d0PcvfpNc4IVu9TSleSLCOJKw3AphyN9yttXLj7kaPx3hvyd7uRZPAdSefGPABLzYxmdmttrVkkvyf5tZnd0nA0HgBcC2BZtcOIgqRjI1EruvtMScdk+2WRJ2Z2R7VGhD4737Fz587pDQd1SJpHcntkbkppsaTFRVH0FEWxUNKlwbIsL2rPqwDg6hziuypNUiTujwC2N63HQCRLDveHAF4G8EqdkuJ3Y/1b1+ZGlML52kobHBycQ/InANua1uOgKIp5be2fAGB5dn5fpQ0NDc0l+TPJrU3rCcDMHozvBuCGoKTgGXUbACuy8/WVJqknyo/k63XbCQPAZpKfmdm6oKR1kQ+19yuz84db81aRfL6uTToAXJedP1pp8c3d/dCm5RTA3c8ko8zt8UpLKV1mZn/GAdS0ngJIOiyldHk1TildIimqZ8tYFTJpGBkZOZvkc3H0Vpq7X8i9eCqPZ5jZPZIeykn8ppl95+4nNBabKIaHh08zsz8AbK12Ken8+A6V80C7k7RU0jVRIfmPeNvdj24sOBFIOt3M+gC8UNMWxmUD4Omm9dioXV5xlF8vaVHbZkxE3ZtZP8ktNe0ckiMkNzetR9/NBvCGpDg/9qOZvZer55v23P0Qp6KZDZB8pqV1SD7ZtP4bUYrV9R07z1rcrLOir4xOKu6N9rwGiqJYEGVV32Uuv0GSm2JcluV57n5FSqnOJVEhQUlRmmskbZN0asNBN0TDCeBVkhH2fbvMeRDaxhi7++EANkiKS6sbXzKzj/MFt7zhqBtSShdXTciePXtmhdbpdE7JjegTbft/gyjfttYVuY4fqRqKTqdzMsldERVJR0iaI+nEboyQ51b+wMuugqSTSH6es/YHAL8DiCZzH81sN4BfM3dX0YvDqL3ehBHdjKQLolOKfi+SLq7a3CX1xLO7L5A0vyiK+fEcnQ/JT+O5vV4g2rlgW58SRI8Q5weAZyuSHADwbf04nzLEDSlpZfQNAOJoXknyLZIv/uf/kiYTfwHgIfyipOKABgAAAABJRU5ErkJggg==";
+                byte[] bytes = Convert.FromBase64String(b64);
+                using (MemoryStream ms = new MemoryStream(bytes))
+                using (Bitmap srcBmp = new Bitmap(ms))
+                using (Bitmap scaled = new Bitmap(w, h))
+                {
+                    using (Graphics g = Graphics.FromImage(scaled))
+                    {
+                        g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.HighQuality;
+                        g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+                        g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.HighQuality;
+                        g.Clear(Color.Black);
+                        g.DrawImage(srcBmp, new Rectangle(0, 0, w, h));
+                    }
+                    return Icon.FromHandle(scaled.GetHicon());
+                }
+            }
+            catch
+            {
+                return SystemIcons.Application;
+            }
         }
 
         private void OpenBrowser()
