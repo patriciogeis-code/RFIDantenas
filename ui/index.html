@@ -1,0 +1,1329 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Zyntra RFID Lab — Control y Calibración de Antenas y Arco UHF</title>
+  <link rel="icon" href="/favicon.ico" />
+  <style>
+    :root {
+      --bg: #0b1120;
+      --card: #111827;
+      --card-alt: #1e293b;
+      --border: #334155;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --sky: #38bdf8;
+      --emerald: #10b981;
+      --amber: #f59e0b;
+      --rose: #f43f5e;
+      --indigo: #6366f1;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      min-height: 100vh;
+      padding-bottom: 40px;
+    }
+    .topbar {
+      background: linear-gradient(90deg, #0f172a 0%, #1e293b 100%);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 14px;
+      position: sticky;
+      top: 0;
+      z-index: 50;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .brand img {
+      width: 38px;
+      height: 38px;
+      border-radius: 8px;
+      border: 1px solid var(--sky);
+      background: #0f172a;
+      padding: 2px;
+    }
+    .brand-title {
+      font-size: 18px;
+      font-weight: 800;
+      letter-spacing: -0.3px;
+      color: #fff;
+    }
+    .brand-sub {
+      font-size: 12px;
+      color: var(--sky);
+      font-weight: 600;
+    }
+    .nav-tabs {
+      display: flex;
+      gap: 8px;
+      background: #090d16;
+      padding: 5px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      flex-wrap: wrap;
+    }
+    .tab-btn {
+      background: transparent;
+      color: var(--muted);
+      border: none;
+      padding: 9px 16px;
+      border-radius: 7px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.18s;
+    }
+    .tab-btn:hover { color: #fff; background: rgba(255,255,255,0.05); }
+    .tab-btn.active {
+      background: #0284c7;
+      color: #fff;
+      box-shadow: 0 2px 10px rgba(2, 132, 199, 0.4);
+    }
+    .status-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+    .dot-online { background: var(--emerald); box-shadow: 0 0 8px var(--emerald); }
+    .dot-standby { background: var(--amber); }
+    .dot-offline { background: #64748b; }
+
+    .container {
+      max-width: 1380px;
+      margin: 20px auto;
+      padding: 0 20px;
+    }
+    .tab-pane { display: none; }
+    .tab-pane.active { display: block; }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: 18px;
+    }
+    .grid-gate {
+      display: grid;
+      grid-template-columns: 1.35fr 0.65fr;
+      gap: 18px;
+    }
+    @media (max-width: 1024px) {
+      .grid-2, .grid-gate { grid-template-columns: 1fr; }
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.25);
+    }
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid #1e293b;
+      padding-bottom: 12px;
+      margin-bottom: 14px;
+    }
+    .card-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: #f1f5f9;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .badge {
+      font-size: 12px;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 999px;
+    }
+    .badge-emerald { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.35); }
+    .badge-amber { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.35); }
+    .badge-sky { background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.35); }
+    .badge-rose { background: rgba(244, 63, 94, 0.15); color: #fb7185; border: 1px solid rgba(244, 63, 94, 0.35); }
+
+    .btn {
+      border: none;
+      border-radius: 8px;
+      padding: 10px 16px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.15s;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+    }
+    .btn-primary { background: #0284c7; color: #fff; }
+    .btn-primary:hover { background: #0369a1; }
+    .btn-emerald { background: #059669; color: #fff; }
+    .btn-emerald:hover { background: #047857; }
+    .btn-rose { background: #e11d48; color: #fff; }
+    .btn-rose:hover { background: #be123c; }
+    .btn-amber { background: #d97706; color: #fff; }
+    .btn-amber:hover { background: #b45309; }
+    .btn-dark { background: #1e293b; color: #e2e8f0; border: 1px solid var(--border); }
+    .btn-dark:hover { background: #334155; }
+
+    .live-tag-hero {
+      background: linear-gradient(135deg, #0f172a 0%, #172554 100%);
+      border: 1px solid #1d4ed8;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+    .live-tag-ascii {
+      font-family: 'Consolas', 'JetBrains Mono', monospace;
+      font-size: 28px;
+      font-weight: 900;
+      color: #38bdf8;
+      letter-spacing: 0.5px;
+      margin: 6px 0;
+    }
+    .live-tag-meta {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
+      gap: 10px;
+      margin-top: 12px;
+      background: rgba(9, 13, 22, 0.65);
+      padding: 12px;
+      border-radius: 8px;
+      border: 1px solid rgba(56, 189, 248, 0.2);
+      font-size: 12px;
+    }
+    .meta-lbl { color: var(--muted); display: block; font-size: 12px; }
+    .meta-val { font-family: monospace; font-weight: 700; color: #f8fafc; font-size: 13px; word-break: break-all; }
+
+    .rssi-meter-wrap { margin-top: 10px; }
+    .rssi-bar-bg {
+      height: 14px;
+      background: #090d16;
+      border-radius: 999px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+    .rssi-bar-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #3b82f6 0%, #10b981 60%, #f59e0b 85%, #ef4444 100%);
+      transition: width 0.15s ease-out;
+    }
+
+    .table-wrap {
+      max-height: 250px;
+      overflow-y: auto;
+      border: 1px solid #1e293b;
+      border-radius: 8px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12.5px;
+    }
+    th {
+      background: #0f172a;
+      color: var(--muted);
+      text-align: left;
+      padding: 9px 12px;
+      position: sticky;
+      top: 0;
+      border-bottom: 1px solid var(--border);
+    }
+    td {
+      padding: 9px 12px;
+      border-bottom: 1px solid #1e293b;
+      font-family: monospace;
+    }
+    tr:hover td { background: rgba(56, 189, 248, 0.06); }
+
+    .input-text {
+      background: #090d16;
+      border: 1px solid var(--border);
+      color: #fff;
+      padding: 9px 12px;
+      border-radius: 8px;
+      font-size: 13px;
+      width: 100%;
+    }
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--sky);
+      cursor: pointer;
+    }
+
+    .svg-clickable {
+      cursor: pointer;
+      transition: filter 0.15s, opacity 0.15s;
+    }
+    .svg-clickable:hover {
+      filter: brightness(1.25) drop-shadow(0 0 6px rgba(56, 189, 248, 0.6));
+    }
+
+    .modal-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.72);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .modal-backdrop.open { display: flex; }
+    .modal-box {
+      background: var(--card);
+      border: 1px solid var(--sky);
+      border-radius: 14px;
+      max-width: 540px;
+      width: 100%;
+      padding: 22px;
+      box-shadow: 0 15px 40px rgba(0,0,0,0.65);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- TOPBAR -->
+  <header class="topbar">
+    <div class="brand">
+      <img src="/logo.png" alt="Zyntra Logo" />
+      <div>
+        <div class="brand-title">Zyntra RFID Lab</div>
+        <div class="brand-sub">Consola de Pruebas y Calibración de Antenas UHF</div>
+      </div>
+    </div>
+
+    <div class="nav-tabs">
+      <button class="tab-btn active" id="tabBtn-dc06" onclick="switchMainTab('dc06')">
+        <span class="status-dot dot-online" id="dot-dc06"></span>
+        1. Antena BRD-DC06 (USB)
+      </button>
+      <button class="tab-btn" id="tabBtn-dc01" onclick="switchMainTab('dc01')">
+        <span class="status-dot dot-standby" id="dot-dc01"></span>
+        2. Pad BRD-DC01 (Mostrador)
+      </button>
+      <button class="tab-btn" id="tabBtn-gate" onclick="switchMainTab('gate')">
+        <span class="status-dot dot-standby" id="dot-gate"></span>
+        3. Arco RFID (4 Antenas + Lector BRD-2204)
+      </button>
+    </div>
+
+    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+      <button class="btn btn-dark" onclick="toggleWebAudio()" id="webAudioBtn">🔊 Beep: ON</button>
+      <button class="btn btn-dark" onclick="reconnectUsb()">🔄 USB</button>
+      <button class="btn btn-primary" onclick="checkAutoUpdate()" id="btnAutoUpdate">🚀 v1.1.0 (Auto-Update)</button>
+    </div>
+  </header>
+
+  <div class="container">
+
+    <!-- ================================================================= -->
+    <!-- SOLAPA 1: BRD-DC06 (CON DIBUJO INTERACTIVO DE DOMO Y CALIBRACIÓN) -->
+    <!-- ================================================================= -->
+    <div id="pane-dc06" class="tab-pane active">
+      <div class="grid-2">
+
+        <!-- IZQUIERDA: DIBUJO INTERACTIVO DE LA BRD-DC06 + MONITOR EN VIVO -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">
+              📡 BRD-DC06 — Dibujo de Alcance y Monitor en Vivo (USB HID)
+            </div>
+            <span class="badge badge-emerald" id="dc06-statusBadge">Conectada</span>
+          </div>
+
+          <!-- DIBUJO INTERACTIVO SVG DE LA ANTENA BRD-DC06 Y SU DOMO DE RADIACIÓN -->
+          <svg id="dc06Svg" viewBox="0 0 640 270" style="width:100%; height:auto; background:#090d16; border-radius:10px; border:1px solid #1e293b; margin-bottom:14px;">
+            <defs>
+              <radialGradient id="dc06DomeGrad" cx="50%" cy="100%" r="95%">
+                <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.55" />
+                <stop offset="65%" stop-color="#10b981" stop-opacity="0.22" />
+                <stop offset="100%" stop-color="#38bdf8" stop-opacity="0.0" />
+              </radialGradient>
+            </defs>
+
+            <!-- Líneas de Cota de Distancia (Arcos de Referencia) -->
+            <!-- 80 cm (27 dBm) -->
+            <path d="M 90 225 A 230 190 0 0 1 550 225" fill="none" stroke="#334155" stroke-width="1.2" stroke-dasharray="4,4" />
+            <text x="555" y="218" fill="#64748b" font-size="11" font-weight="bold">80 cm (27 dBm Máx)</text>
+
+            <!-- 35 cm (18 dBm) -->
+            <path d="M 175 225 A 145 120 0 0 1 465 225" fill="none" stroke="#334155" stroke-width="1.2" stroke-dasharray="4,4" />
+            <text x="470" y="185" fill="#64748b" font-size="11" font-weight="bold">30 cm (18 dBm Medio)</text>
+
+            <!-- 8 cm (8 dBm Grabación Segura) -->
+            <path d="M 245 225 A 75 62 0 0 1 395 225" fill="none" stroke="#10b981" stroke-width="1.2" stroke-dasharray="3,3" />
+            <text x="402" y="162" fill="#10b981" font-size="11" font-weight="bold">8 cm (8 dBm Grabación 1 a 1)</text>
+
+            <!-- DOMO DINÁMICO DE POTENCIA RF (Cambia con el Slider / Calibración) -->
+            <ellipse id="dc06SvgDome" cx="320" cy="225" rx="225" ry="182" fill="url(#dc06DomeGrad)" stroke="#38bdf8" stroke-width="2" />
+
+            <!-- Mesa / Escritorio -->
+            <line x1="20" y1="226" x2="620" y2="226" stroke="#475569" stroke-width="4" />
+            <text x="30" y="248" fill="#94a3b8" font-size="11" font-weight="bold">SUPERFICIE DEL ESCRITORIO / MESA DE EMPAQUE</text>
+
+            <!-- Cable USB hacia PC -->
+            <path d="M 395 215 L 520 215 L 545 200" fill="none" stroke="#38bdf8" stroke-width="3" />
+            <rect x="545" y="185" width="75" height="30" rx="5" fill="#1e293b" stroke="#38bdf8" stroke-width="1.5" />
+            <text x="582" y="204" text-anchor="middle" fill="#fff" font-size="10" font-weight="bold">USB HID PC</text>
+
+            <!-- Cuerpo Físico del Lector/Antena BRD-DC06 (Clicable) -->
+            <g class="svg-clickable" onclick="autoCalibrateDc06('OPTIMAL')">
+              <rect x="235" y="196" width="170" height="30" rx="7" fill="#1e293b" stroke="#38bdf8" stroke-width="2.5" />
+              <rect x="255" y="192" width="130" height="6" rx="3" fill="#38bdf8" />
+              <circle id="dc06SvgLed" cx="252" cy="211" r="5" fill="#10b981" />
+              <text x="322" y="215" text-anchor="middle" fill="#ffffff" font-size="12" font-weight="bold">
+                BOWEI BRD-DC06
+              </text>
+            </g>
+
+            <!-- Indicador Flotante de la Etiqueta Detectada en el Domo -->
+            <g id="dc06SvgTagAvatar" transform="translate(320, 95)" style="transition: all 0.18s ease-out;">
+              <rect x="-78" y="-18" width="156" height="34" rx="8" fill="#0f172a" stroke="#34d399" stroke-width="2" />
+              <text id="dc06SvgTagText" x="0" y="4" text-anchor="middle" fill="#34d399" font-size="12" font-weight="bold" font-family="monospace">
+                🏷️ Acerca un Tag...
+              </text>
+            </g>
+
+            <!-- Etiqueta Superior de Estado del Domo -->
+            <text id="dc06SvgDomeLabel" x="320" y="24" text-anchor="middle" fill="#38bdf8" font-size="13" font-weight="bold">
+              INTENSIDAD ACTUAL: 27 dBm (Alcance ~80 cm) — Toca los modos o mueve el slider
+            </text>
+          </svg>
+
+          <!-- Botonera de Acción Principal -->
+          <div style="display:flex; flex-wrap:wrap; gap:10px; margin-bottom:14px;">
+            <button class="btn btn-emerald" id="dc06-toggleBtn" onclick="toggleUsbScan('DC06')" style="flex:1; font-size:14px;">
+              ⏹ DETENER LECTURA EN VIVO
+            </button>
+            <button class="btn btn-dark" onclick="triggerUsbBeep('DC06')">🔊 Probar Beep</button>
+            <button class="btn btn-dark" onclick="clearUsbTags('DC06')">🧹 Limpiar</button>
+          </div>
+
+          <!-- Tarjeta de Última Etiqueta Leída -->
+          <div class="live-tag-hero">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <span style="font-size:12px; font-weight:700; color:#93c5fd;">
+                🏷️ LECTURA EN TIEMPO REAL
+              </span>
+              <span class="badge badge-sky" id="dc06-rpsBadge">0 lecturas/s</span>
+            </div>
+            <div class="live-tag-ascii" id="dc06-heroAscii">Esperando etiqueta...</div>
+            <div class="rssi-meter-wrap">
+              <div style="display:flex; justify-content:space-between; font-size:12px; margin-bottom:4px;">
+                <span style="color:var(--muted);">Señal Recibida (RSSI / Proximidad a la BRD-DC06):</span>
+                <strong id="dc06-heroRssi" style="color:#34d399;">-- dBm (0%)</strong>
+              </div>
+              <div class="rssi-bar-bg">
+                <div class="rssi-bar-fill" id="dc06-rssiBar"></div>
+              </div>
+            </div>
+            <div class="live-tag-meta">
+              <div>
+                <span class="meta-lbl">EPC Hex (128 bits):</span>
+                <span class="meta-val" id="dc06-heroEpcHex">—</span>
+              </div>
+              <div>
+                <span class="meta-lbl">Frecuencia / Contador:</span>
+                <span class="meta-val" id="dc06-heroFreq">915.25 MHz | 0 lecturas</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- DERECHA: CALIBRADOR DE INTENSIDAD BRD-DC06 + GRABADOR + TABLA -->
+        <div style="display:flex; flex-direction:column; gap:16px;">
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">🎯 Calibración de Intensidad — Antena BRD-DC06</div>
+              <span class="badge badge-sky" id="dc06-powerBadge">27 dBm</span>
+            </div>
+
+            <div style="font-size:12px; color:var(--muted); margin-bottom:10px;">
+              Serie Hardware: <strong style="color:#fff;" id="dc06-serialLbl">BRDC600002328A000282</strong>
+              &nbsp;|&nbsp; Banda: <strong style="color:#34d399;">FCC 902–928 MHz</strong>
+            </div>
+
+            <label style="font-size:13px; font-weight:700; display:block; margin-bottom:6px;">
+              Regular Intensidad RF (0 a 27 dBm) — Mira cómo cambia el domo en el dibujo:
+            </label>
+            <input type="range" id="dc06-powerSlider" min="0" max="27" value="27"
+                   oninput="previewDc06Dome(this.value)"
+                   onchange="setUsbPower('DC06', this.value)" />
+
+            <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:8px; margin-top:12px;">
+              <button class="btn btn-dark" onclick="setDc06Preset(8)">
+                🎯 8 dBm (Grabar 1 Tag)
+              </button>
+              <button class="btn btn-dark" onclick="setDc06Preset(18)">
+                📦 18 dBm (Mesa 25cm)
+              </button>
+              <button class="btn btn-primary" onclick="setDc06Preset(27)">
+                🚀 27 dBm (Máximo)
+              </button>
+            </div>
+
+            <button class="btn btn-emerald" style="width:100%; margin-top:10px;" onclick="autoCalibrateDc06('AUTO')">
+              ✨ Auto-Calibrar Intensidad según Etiqueta Cercana
+            </button>
+            <div id="dc06-calibMsg" style="font-size:12px; color:#38bdf8; margin-top:8px;"></div>
+          </div>
+
+          <!-- Grabador Write EPC -->
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">✍️ Grabador de Etiquetas (Write EPC)</div>
+              <span class="badge badge-amber">ISO 18000-6C</span>
+            </div>
+            <div style="display:flex; gap:8px;">
+              <input type="text" id="dc06-writeInput" class="input-text" placeholder="Ej: 72211-0735" value="72211-0734" />
+              <button class="btn btn-amber" onclick="writeUsbTag('DC06')" style="white-space:nowrap;">
+                ⚡ Grabar Tag
+              </button>
+            </div>
+            <div id="dc06-writeFeedback" style="margin-top:8px; font-size:12px; font-weight:700; display:none;"></div>
+          </div>
+
+          <!-- Tabla Histórica -->
+          <div class="card">
+            <div style="font-size:13px; font-weight:700; margin-bottom:8px; color:var(--muted);">
+              📋 Etiquetas Detectadas por BRD-DC06:
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Código ASCII</th>
+                    <th>EPC (Hex)</th>
+                    <th>RSSI</th>
+                    <th>Lecturas</th>
+                  </tr>
+                </thead>
+                <tbody id="dc06-tableBody">
+                  <tr><td colspan="4" style="text-align:center; color:var(--muted);">Acerca una etiqueta a la BRD-DC06...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================================================================= -->
+    <!-- SOLAPA 2: BRD-DC01 (CON DIBUJO INTERACTIVO DEL PAD 33x33 CM)      -->
+    <!-- ================================================================= -->
+    <div id="pane-dc01" class="tab-pane">
+      <div class="grid-2">
+
+        <!-- IZQUIERDA: DIBUJO INTERACTIVO DEL PAD DE MOSTRADOR BRD-DC01 (330x330mm) -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">🖥️ BRD-DC01 — Plano de Zona Near-Field en Mostrador (330×330 mm)</div>
+            <span class="badge badge-amber" id="dc01-statusBadge">Modo Calibración / USB-C</span>
+          </div>
+
+          <!-- SVG INTERACTIVO DE LA PLACA BRD-DC01 VISTA SUPERIOR EN EL MOSTRADOR -->
+          <svg id="dc01Svg" viewBox="0 0 640 310" style="width:100%; height:auto; background:#090d16; border-radius:10px; border:1px solid #1e293b; margin-bottom:14px;">
+            <!-- Superficie del Mostrador de Caja -->
+            <rect x="15" y="15" width="610" height="280" rx="10" fill="#0f172a" stroke="#334155" stroke-width="1.5" />
+            <text x="30" y="38" fill="#64748b" font-size="11" font-weight="bold">MOSTRADOR DE CAJA / MESA DE CONTROL (VISTA SUPERIOR)</text>
+
+            <!-- Zona Izquierda Prohibida (Prendas de otro cliente esperando) -->
+            <rect x="30" y="85" width="125" height="160" rx="8" fill="#4c051933" stroke="#f43f5e" stroke-width="1.5" stroke-dasharray="4,3" />
+            <text x="92" y="155" text-anchor="middle" fill="#fb7185" font-size="11" font-weight="bold">ZONA EXTERNA IZQ</text>
+            <text x="92" y="173" text-anchor="middle" fill="#fda4af" font-size="10">(Prendas en espera</text>
+            <text x="92" y="187" text-anchor="middle" fill="#fda4af" font-size="10">NO deben leerse)</text>
+
+            <!-- Zona Derecha Prohibida (Bolsas ya cobradas) -->
+            <rect x="485" y="85" width="125" height="160" rx="8" fill="#4c051933" stroke="#f43f5e" stroke-width="1.5" stroke-dasharray="4,3" />
+            <text x="547" y="155" text-anchor="middle" fill="#fb7185" font-size="11" font-weight="bold">ZONA EXTERNA DER</text>
+            <text x="547" y="173" text-anchor="middle" fill="#fda4af" font-size="10">(Bolsas cobradas</text>
+            <text x="547" y="187" text-anchor="middle" fill="#fda4af" font-size="10">NO deben leerse)</text>
+
+            <!-- Placa Física BRD-DC01 (330 x 330 x 18 mm - Vidrio Templado y Acero) -->
+            <rect x="200" y="50" width="240" height="220" rx="12" fill="#1e293b" stroke="#94a3b8" stroke-width="3" />
+            <rect x="212" y="62" width="216" height="196" rx="8" fill="#090d16" stroke="#38bdf8" stroke-width="1.5" />
+            <text x="320" y="82" text-anchor="middle" fill="#cbd5e1" font-size="11" font-weight="bold">
+              PLACA BOWEI BRD-DC01 (330 × 330 mm)
+            </text>
+            <text x="320" y="248" text-anchor="middle" fill="#64748b" font-size="10" font-weight="bold">
+              Superficie de Vidrio Templado IP54 + Antena Near-Field
+            </text>
+
+            <!-- BURBUJA DINÁMICA DE CAMPO CERCANO (Cambia con el Slider 0-25 dBm) -->
+            <circle id="dc01SvgField" cx="320" cy="160" r="88" fill="#10b98133" stroke="#10b981" stroke-width="2.5" />
+            <text id="dc01SvgFieldText" x="320" y="156" text-anchor="middle" fill="#34d399" font-size="13" font-weight="bold">
+              CAMPO SEGURO: 16 dBm
+            </text>
+            <text id="dc01SvgFieldSub" x="320" y="175" text-anchor="middle" fill="#a7f3d0" font-size="11">
+              Lee hasta 20 cm arriba | 0% desborde lateral
+            </text>
+          </svg>
+
+          <div style="display:flex; gap:10px;">
+            <button class="btn btn-primary" id="dc01-toggleBtn" onclick="toggleUsbScan('DC01')" style="flex:1;">
+              ▶ INICIAR LECTURA EN BRD-DC01
+            </button>
+            <button class="btn btn-emerald" onclick="autoCalibrateDc01()">
+              🎯 Auto-Calibrar Sin Desborde (16 dBm)
+            </button>
+          </div>
+        </div>
+
+        <!-- DERECHA: CONTROLES DE INTENSIDAD BRD-DC01 -->
+        <div style="display:flex; flex-direction:column; gap:16px;">
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">🎚️ Calibración de Intensidad — Pad BRD-DC01 (0 a 25 dBm)</div>
+              <span class="badge badge-emerald" id="dc01-powerBadge">16 dBm</span>
+            </div>
+            <p style="font-size:12.5px; color:var(--muted); line-height:1.5; margin-bottom:12px;">
+              Mueve el control para ver en el plano izquierdo cómo se expande el campo magnético de la <strong>BRD-DC01</strong>. Si superas los <strong>21 dBm</strong>, el círculo invade las zonas rojas laterales del mostrador.
+            </p>
+
+            <input type="range" id="dc01-powerSlider" min="0" max="25" value="16"
+                   oninput="previewDc01Field(this.value)"
+                   onchange="setUsbPower('DC01', this.value)" />
+
+            <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:8px; margin-top:12px;">
+              <button class="btn btn-dark" onclick="setDc01Preset(10)">
+                🏷️ 10 dBm (Contacto)
+              </button>
+              <button class="btn btn-emerald" onclick="setDc01Preset(16)">
+                ✅ 16 dBm (Ideal Caja)
+              </button>
+              <button class="btn btn-amber" onclick="setDc01Preset(24)">
+                📚 24 dBm (Pila 40cm)
+              </button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div style="font-size:13px; font-weight:700; margin-bottom:8px; color:var(--muted);">
+              📋 Etiquetas Leídas sobre el Pad BRD-DC01:
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Código ASCII</th>
+                    <th>EPC (Hex)</th>
+                    <th>RSSI</th>
+                    <th>Lecturas</th>
+                  </tr>
+                </thead>
+                <tbody id="dc01-tableBody">
+                  <tr><td colspan="4" style="text-align:center; color:var(--muted);">Conecta la BRD-DC01 por USB-C para ver lecturas en vivo.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================================================================= -->
+    <!-- SOLAPA 3: ARCO RFID COMPLETO (4 ANTENAS + LECTOR + ALARMA GPIO)   -->
+    <!-- ================================================================= -->
+    <div id="pane-gate" class="tab-pane">
+      <div class="grid-gate">
+
+        <!-- IZQUIERDA: DIBUJO INTERACTIVO DEL ARCO + LECTOR + CONEXIONES -->
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">📐 Esquema Interactivo del Arco RFID (Haz clic en cualquier Antena, Sensor o Alarma)</div>
+              <div style="font-size:12px; color:var(--muted); margin-top:2px;">
+                Haz clic sobre <strong>ANT 1, ANT 2, ANT 3 o ANT 4</strong> para abrir su Popup de detalle y calibración individual, o sobre el <strong>LED / Sirena</strong> para probar las salidas del lector.
+              </div>
+            </div>
+            <span class="badge badge-sky" id="gate-connBadge">Simulador / Red Lista</span>
+          </div>
+
+          <svg id="gateBlueprintSvg" viewBox="0 0 820 490" style="width:100%; height:auto; background:#090d16; border-radius:10px; border:1px solid #1e293b;">
+            <defs>
+              <pattern id="bpGrid" width="24" height="24" patternUnits="userSpaceOnUse">
+                <path d="M 24 0 L 0 0 0 24" fill="none" stroke="#1e293b" stroke-width="0.6" />
+              </pattern>
+              <radialGradient id="coneGradLeft" cx="0%" cy="50%" r="100%">
+                <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.42" />
+                <stop offset="100%" stop-color="#38bdf8" stop-opacity="0.0" />
+              </radialGradient>
+              <radialGradient id="coneGradRight" cx="100%" cy="50%" r="100%">
+                <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.42" />
+                <stop offset="100%" stop-color="#38bdf8" stop-opacity="0.0" />
+              </radialGradient>
+            </defs>
+            <rect width="820" height="490" fill="url(#bpGrid)" />
+
+            <text x="275" y="26" text-anchor="middle" fill="#f59e0b" font-size="13" font-weight="bold" id="svgCorridorText">
+              PASILLO DE PASO DEL ARCO (ANCHO: 150 cm) — 4 ANTENAS 8 dBiC CIRCULARES
+            </text>
+            <line x1="125" y1="36" x2="425" y2="36" stroke="#f59e0b" stroke-width="2" stroke-dasharray="5,3" />
+
+            <!-- CONOS DE RADIACIÓN DINÁMICOS DE LAS 4 ANTENAS -->
+            <polygon id="svgCone1" points="125,115 330,65 330,165" fill="url(#coneGradLeft)" />
+            <polygon id="svgCone2" points="125,265 320,215 320,315" fill="url(#coneGradLeft)" />
+            <polygon id="svgCone3" points="425,115 220,65 220,165" fill="url(#coneGradRight)" />
+            <polygon id="svgCone4" points="425,265 230,215 230,315" fill="url(#coneGradRight)" />
+
+            <!-- BARRERAS INFRARROJAS IN1 e IN2 -->
+            <g class="svg-clickable" onclick="simulateIrBarrier(1)">
+              <line x1="125" y1="182" x2="425" y2="182" stroke="#10b981" stroke-width="2.2" stroke-dasharray="6,4" id="svgIrLine1" />
+              <rect x="215" y="169" width="120" height="18" rx="4" fill="#064e3b" stroke="#10b981" stroke-width="1" />
+              <text x="275" y="182" text-anchor="middle" fill="#a7f3d0" font-size="11" font-weight="bold">Haz IR 1 (IN1 Interno)</text>
+            </g>
+            <g class="svg-clickable" onclick="simulateIrBarrier(2)">
+              <line x1="125" y1="208" x2="425" y2="208" stroke="#06b6d4" stroke-width="2.2" stroke-dasharray="6,4" id="svgIrLine2" />
+              <rect x="215" y="198" width="120" height="18" rx="4" fill="#083344" stroke="#06b6d4" stroke-width="1" />
+              <text x="275" y="211" text-anchor="middle" fill="#cffafe" font-size="11" font-weight="bold">Haz IR 2 (IN2 Externo)</text>
+            </g>
+
+            <!-- PEDESTAL IZQUIERDO -->
+            <rect x="30" y="45" width="95" height="310" rx="8" fill="#1e293b" stroke="#475569" stroke-width="2" />
+            <line x1="26" y1="45" x2="26" y2="355" stroke="#ef4444" stroke-width="4" />
+            <text x="77" y="64" text-anchor="middle" fill="#94a3b8" font-size="11" font-weight="bold">POSTE IZQ</text>
+
+            <!-- ANTENA 1 (Clicable) -->
+            <g class="svg-clickable" onclick="openAntennaModal(1)">
+              <rect id="svgAntBox1" x="40" y="75" width="75" height="80" rx="6" fill="#0f172a" stroke="#38bdf8" stroke-width="2.5" />
+              <circle cx="77" cy="112" r="20" fill="none" stroke="#38bdf8" stroke-width="1.5" stroke-dasharray="3,2" />
+              <text x="77" y="95" text-anchor="middle" fill="#38bdf8" font-size="12" font-weight="bold">ANTENA 1</text>
+              <text x="77" y="132" text-anchor="middle" fill="#f8fafc" font-size="12" font-weight="bold" id="svgAntPwr1">26 dBm</text>
+              <text x="77" y="148" text-anchor="middle" fill="#94a3b8" font-size="10">h=115cm (Clic)</text>
+            </g>
+
+            <!-- ANTENA 2 (Clicable) -->
+            <g class="svg-clickable" onclick="openAntennaModal(2)">
+              <rect id="svgAntBox2" x="40" y="225" width="75" height="80" rx="6" fill="#0f172a" stroke="#38bdf8" stroke-width="2.5" />
+              <circle cx="77" cy="262" r="20" fill="none" stroke="#38bdf8" stroke-width="1.5" stroke-dasharray="3,2" />
+              <text x="77" y="245" text-anchor="middle" fill="#38bdf8" font-size="12" font-weight="bold">ANTENA 2</text>
+              <text x="77" y="282" text-anchor="middle" fill="#f8fafc" font-size="12" font-weight="bold" id="svgAntPwr2">26 dBm</text>
+              <text x="77" y="298" text-anchor="middle" fill="#94a3b8" font-size="10">h=45cm (Clic)</text>
+            </g>
+
+            <!-- PEDESTAL DERECHO -->
+            <rect x="425" y="45" width="95" height="310" rx="8" fill="#1e293b" stroke="#475569" stroke-width="2" />
+            <line x1="524" y1="45" x2="524" y2="355" stroke="#ef4444" stroke-width="4" />
+            <text x="472" y="64" text-anchor="middle" fill="#94a3b8" font-size="11" font-weight="bold">POSTE DER</text>
+
+            <!-- ANTENA 3 (Clicable) -->
+            <g class="svg-clickable" onclick="openAntennaModal(3)">
+              <rect id="svgAntBox3" x="435" y="75" width="75" height="80" rx="6" fill="#0f172a" stroke="#38bdf8" stroke-width="2.5" />
+              <circle cx="472" cy="112" r="20" fill="none" stroke="#38bdf8" stroke-width="1.5" stroke-dasharray="3,2" />
+              <text x="472" y="95" text-anchor="middle" fill="#38bdf8" font-size="12" font-weight="bold">ANTENA 3</text>
+              <text x="472" y="132" text-anchor="middle" fill="#f8fafc" font-size="12" font-weight="bold" id="svgAntPwr3">26 dBm</text>
+              <text x="472" y="148" text-anchor="middle" fill="#94a3b8" font-size="10">h=115cm (Clic)</text>
+            </g>
+
+            <!-- ANTENA 4 (Clicable) -->
+            <g class="svg-clickable" onclick="openAntennaModal(4)">
+              <rect id="svgAntBox4" x="435" y="225" width="75" height="80" rx="6" fill="#0f172a" stroke="#38bdf8" stroke-width="2.5" />
+              <circle cx="472" cy="262" r="20" fill="none" stroke="#38bdf8" stroke-width="1.5" stroke-dasharray="3,2" />
+              <text x="472" y="245" text-anchor="middle" fill="#38bdf8" font-size="12" font-weight="bold">ANTENA 4</text>
+              <text x="472" y="282" text-anchor="middle" fill="#f8fafc" font-size="12" font-weight="bold" id="svgAntPwr4">26 dBm</text>
+              <text x="472" y="298" text-anchor="middle" fill="#94a3b8" font-size="10">h=45cm (Clic)</text>
+            </g>
+
+            <!-- CABLES COAXIALES DESDE LAS 4 ANTENAS AL LECTOR BRD-2204 -->
+            <path d="M 77 155 L 77 390 L 560 390" fill="none" stroke="#38bdf8" stroke-width="1.8" />
+            <path d="M 77 305 L 77 402 L 560 402" fill="none" stroke="#38bdf8" stroke-width="1.8" />
+            <path d="M 472 155 L 472 414 L 560 414" fill="none" stroke="#38bdf8" stroke-width="1.8" />
+            <path d="M 472 305 L 472 426 L 560 426" fill="none" stroke="#38bdf8" stroke-width="1.8" />
+            <text x="275" y="384" text-anchor="middle" fill="#38bdf8" font-size="11" font-weight="bold">
+              4× Cables Coaxiales LMR-240 / LMR-400 (50 Ω) hacia Bocas SMA 1, 2, 3 y 4
+            </text>
+
+            <!-- LECTOR FIJO BRD-2204 -->
+            <g transform="translate(555, 290)">
+              <rect x="0" y="0" width="245" height="182" rx="10" fill="#1e293b" stroke="#94a3b8" stroke-width="2.5" />
+              <text x="122" y="22" text-anchor="middle" fill="#f8fafc" font-size="13" font-weight="bold">
+                LECTOR FIJO BRD-2204
+              </text>
+              <text x="122" y="37" text-anchor="middle" fill="#38bdf8" font-size="11" font-weight="bold">
+                Chip Impinj E710 (10–33 dBm | &gt;800 tags/s)
+              </text>
+
+              <g transform="translate(12, 48)">
+                <circle cx="12" cy="12" r="8" fill="#ca8a04" stroke="#fef08a" stroke-width="1.5" />
+                <text x="12" y="32" text-anchor="middle" fill="#fef08a" font-size="10" font-weight="bold">SMA1</text>
+
+                <circle cx="48" cy="12" r="8" fill="#ca8a04" stroke="#fef08a" stroke-width="1.5" />
+                <text x="48" y="32" text-anchor="middle" fill="#fef08a" font-size="10" font-weight="bold">SMA2</text>
+
+                <circle cx="84" cy="12" r="8" fill="#ca8a04" stroke="#fef08a" stroke-width="1.5" />
+                <text x="84" y="32" text-anchor="middle" fill="#fef08a" font-size="10" font-weight="bold">SMA3</text>
+
+                <circle cx="120" cy="12" r="8" fill="#ca8a04" stroke="#fef08a" stroke-width="1.5" />
+                <text x="120" y="32" text-anchor="middle" fill="#fef08a" font-size="10" font-weight="bold">SMA4</text>
+
+                <rect x="152" y="2" width="66" height="24" rx="3" fill="#0284c7" stroke="#7dd3fc" stroke-width="1.5" />
+                <text x="185" y="18" text-anchor="middle" fill="#fff" font-size="10" font-weight="bold">RJ-45 LAN</text>
+              </g>
+
+              <rect x="12" y="92" width="221" height="36" rx="4" fill="#065f46" stroke="#34d399" stroke-width="1.5" />
+              <text x="122" y="107" text-anchor="middle" fill="#a7f3d0" font-size="10" font-weight="bold">
+                BORNERA GPIO: [12V OUT] [IN1] [IN2] [O1] [O2] [O3] [O4]
+              </text>
+              <text x="122" y="121" text-anchor="middle" fill="#fff" font-size="10">
+                IN1/IN2: Barreras IR | O1..O3: LEDs y Sirena 12V
+              </text>
+
+              <rect x="12" y="138" width="221" height="32" rx="4" fill="#0f172a" stroke="#475569" stroke-width="1" />
+              <text x="122" y="158" text-anchor="middle" fill="#cbd5e1" font-size="11" font-weight="bold">
+                ⚡ Entrada Fuente: DC 12V / 5A (60W)
+              </text>
+            </g>
+
+            <!-- ROUTER / SWITCH DE RED LOCAL -->
+            <g transform="translate(555, 185)">
+              <rect x="0" y="0" width="245" height="72" rx="8" fill="#0f172a" stroke="#0284c7" stroke-width="2" />
+              <text x="122" y="22" text-anchor="middle" fill="#38bdf8" font-size="12" font-weight="bold">
+                🌐 ROUTER / SWITCH DEL LOCAL (RED LAN)
+              </text>
+              <text x="122" y="40" text-anchor="middle" fill="#e2e8f0" font-size="11">
+                Cable UTP Cat6 → RJ-45 del BRD-2204
+              </text>
+              <text x="122" y="57" text-anchor="middle" fill="#34d399" font-size="11" font-weight="bold" id="svgRouterIp">
+                IP Lector: 192.168.1.116 : 9090
+              </text>
+            </g>
+            <line x1="752" y1="257" x2="752" y2="338" stroke="#0284c7" stroke-width="3" stroke-dasharray="4,2" />
+
+            <!-- BALIZA LED + SIRENA ALARMA -->
+            <g transform="translate(555, 35)">
+              <rect x="0" y="0" width="245" height="128" rx="10" fill="#1e293b" stroke="#64748b" stroke-width="2" />
+              <text x="122" y="20" text-anchor="middle" fill="#f8fafc" font-size="12" font-weight="bold">
+                🚨 MÓDULO LED Y ALARMA (CLIC PARA PROBAR)
+              </text>
+
+              <g class="svg-clickable" onclick="toggleGpoPort(1)" transform="translate(14, 32)">
+                <rect id="svgGpoBox1" x="0" y="0" width="68" height="78" rx="6" fill="#064e3b" stroke="#10b981" stroke-width="2" />
+                <circle id="svgGpoCircle1" cx="34" cy="28" r="14" fill="#047857" />
+                <text x="34" y="56" text-anchor="middle" fill="#fff" font-size="11" font-weight="bold">GPO O1</text>
+                <text x="34" y="70" text-anchor="middle" fill="#a7f3d0" font-size="10">LED Verde</text>
+              </g>
+
+              <g class="svg-clickable" onclick="toggleGpoPort(2)" transform="translate(88, 32)">
+                <rect id="svgGpoBox2" x="0" y="0" width="68" height="78" rx="6" fill="#4c0519" stroke="#f43f5e" stroke-width="2" />
+                <circle id="svgGpoCircle2" cx="34" cy="28" r="14" fill="#881337" />
+                <text x="34" y="56" text-anchor="middle" fill="#fff" font-size="11" font-weight="bold">GPO O2</text>
+                <text x="34" y="70" text-anchor="middle" fill="#fda4af" font-size="10">LED Rojo</text>
+              </g>
+
+              <g class="svg-clickable" onclick="toggleGpoPort(3)" transform="translate(162, 32)">
+                <rect id="svgGpoBox3" x="0" y="0" width="68" height="78" rx="6" fill="#451a03" stroke="#f59e0b" stroke-width="2" />
+                <circle id="svgGpoCircle3" cx="34" cy="28" r="14" fill="#78350f" />
+                <text x="34" y="56" text-anchor="middle" fill="#fff" font-size="11" font-weight="bold">GPO O3</text>
+                <text x="34" y="70" text-anchor="middle" fill="#fde68a" font-size="10">Sirena 12V</text>
+              </g>
+            </g>
+          </svg>
+        </div>
+
+        <!-- DERECHA: CALIBRADOR AUTOMÁTICO + REGULACIÓN DE LAS 4 ANTENAS + RED -->
+        <div style="display:flex; flex-direction:column; gap:16px;">
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">🎯 Calibración Automática y Manual del Arco</div>
+            </div>
+
+            <div style="margin-bottom:12px;">
+              <label style="font-size:12px; font-weight:700; color:var(--muted); display:block; margin-bottom:5px;">
+                ANCHO DEL PORTÓN / PASILLO ENTRE POSTES (cm):
+              </label>
+              <div style="display:flex; gap:8px;">
+                <input type="number" id="gateWidthInput" class="input-text" value="150" min="80" max="450" style="width:110px;" />
+                <button class="btn btn-emerald" style="flex:1;" onclick="runGateAutoCalibration()">
+                  🎯 Auto-Calibrar 4 Antenas Solas
+                </button>
+              </div>
+            </div>
+
+            <div id="gateCalibReport" style="font-size:12px; background:#090d16; padding:10px; border-radius:8px; border:1px solid #1e293b; color:#38bdf8; margin-bottom:14px; line-height:1.45;">
+              Ajusta las 4 antenas manualmente abajo o toca <strong>Auto-Calibrar</strong> para que el sistema regule la potencia superior/inferior según el ancho del paso.
+            </div>
+
+            <div style="display:flex; flex-direction:column; gap:10px;">
+              <div>
+                <div style="display:flex; justify-content:space-between; font-size:12px; font-weight:700;">
+                  <span>📡 Antena 1 (Superior Izq - SMA 1):</span>
+                  <span style="color:var(--sky);" id="lblAntPwr1">26 dBm</span>
+                </div>
+                <input type="range" id="sliderAnt1" min="10" max="33" value="26" onchange="setGateAntPower(1, this.value)" oninput="previewGateAntPower(1, this.value)" />
+              </div>
+
+              <div>
+                <div style="display:flex; justify-content:space-between; font-size:12px; font-weight:700;">
+                  <span>📡 Antena 2 (Inferior Izq - SMA 2):</span>
+                  <span style="color:var(--sky);" id="lblAntPwr2">26 dBm</span>
+                </div>
+                <input type="range" id="sliderAnt2" min="10" max="33" value="26" onchange="setGateAntPower(2, this.value)" oninput="previewGateAntPower(2, this.value)" />
+              </div>
+
+              <div>
+                <div style="display:flex; justify-content:space-between; font-size:12px; font-weight:700;">
+                  <span>📡 Antena 3 (Superior Der - SMA 3):</span>
+                  <span style="color:var(--sky);" id="lblAntPwr3">26 dBm</span>
+                </div>
+                <input type="range" id="sliderAnt3" min="10" max="33" value="26" onchange="setGateAntPower(3, this.value)" oninput="previewGateAntPower(3, this.value)" />
+              </div>
+
+              <div>
+                <div style="display:flex; justify-content:space-between; font-size:12px; font-weight:700;">
+                  <span>📡 Antena 4 (Inferior Der - SMA 4):</span>
+                  <span style="color:var(--sky);" id="lblAntPwr4">26 dBm</span>
+                </div>
+                <input type="range" id="sliderAnt4" min="10" max="33" value="26" onchange="setGateAntPower(4, this.value)" oninput="previewGateAntPower(4, this.value)" />
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">🌐 Conexión del Lector BRD-2204 al Router (RJ-45)</div>
+            </div>
+            <div style="display:grid; grid-template-columns: 1fr 90px; gap:8px; margin-bottom:10px;">
+              <input type="text" id="gateIpInput" class="input-text" value="192.168.1.116" placeholder="IP del BRD-2204" />
+              <input type="number" id="gatePortInput" class="input-text" value="9090" placeholder="Puerto" />
+            </div>
+            <button class="btn btn-primary" style="width:100%;" onclick="connectGateTcp()">
+              🔌 Conectar al Lector BRD-2204 en Red
+            </button>
+            <div id="gateConnStatus" style="font-size:12px; color:var(--muted); margin-top:8px;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- POPUP / MODAL DE DETALLE AL HACER CLIC EN UNA ANTENA DEL ARCO -->
+  <div id="antennaModal" class="modal-backdrop" onclick="if(event.target===this) closeAntennaModal()">
+    <div class="modal-box">
+      <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:12px; margin-bottom:14px;">
+        <div>
+          <span style="font-size:11px; font-weight:800; color:var(--sky); text-transform:uppercase;" id="modalAntSub">PUERTO SMA #1 DEL LECTOR BRD-2204</span>
+          <h3 style="font-size:18px; font-weight:800; color:#fff;" id="modalAntTitle">Antena #1 — Superior Izquierda</h3>
+        </div>
+        <button class="btn btn-dark" onclick="closeAntennaModal()">✕ Cerrar</button>
+      </div>
+
+      <div style="background:#090d16; border:1px solid #1e293b; border-radius:10px; padding:14px; margin-bottom:14px; font-size:13px;">
+        <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
+          <span style="color:var(--muted);">Modelo de Antena:</span>
+          <strong>Bowei 8 dBiC Polarización Circular (FCC 902–928 MHz)</strong>
+        </div>
+        <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
+          <span style="color:var(--muted);">Posición Física en el Arco:</span>
+          <strong id="modalAntPos" style="color:#34d399;">Poste Izquierdo — Altura 115 cm</strong>
+        </div>
+        <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
+          <span style="color:var(--muted);">Cable Coaxial al BRD-2204:</span>
+          <strong id="modalAntCable">LMR-240 (1.5 m) → Conector SMA #1</strong>
+        </div>
+        <div style="display:flex; justify-content:space-between;">
+          <span style="color:var(--muted);">Cono de Apertura (Beamwidth):</span>
+          <strong>75° Horizontal × 75° Vertical</strong>
+        </div>
+      </div>
+
+      <div style="margin-bottom:16px;">
+        <div style="display:flex; justify-content:space-between; font-size:13px; font-weight:700; margin-bottom:6px;">
+          <span>Intensidad / Potencia TX de esta Antena (10 a 33 dBm):</span>
+          <span style="color:var(--sky); font-size:15px;" id="modalAntPwrVal">26 dBm</span>
+        </div>
+        <input type="range" id="modalAntSlider" min="10" max="33" value="26"
+               oninput="document.getElementById('modalAntPwrVal').textContent = this.value + ' dBm'; previewGateAntPower(selectedModalAnt, this.value);"
+               onchange="setGateAntPower(selectedModalAnt, this.value)" />
+      </div>
+
+      <div style="display:flex; gap:10px;">
+        <button class="btn btn-primary" style="flex:1;" onclick="toggleGateAntEnabled(selectedModalAnt)" id="modalAntToggleBtn">
+          ✅ Antena Habilitada (Click para Aislar/Apagar)
+        </button>
+        <button class="btn btn-emerald" onclick="closeAntennaModal()">Listo</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let webAudioEnabled = true;
+    let lastBeepCount = 0;
+    let selectedModalAnt = 1;
+    let currentState = null;
+
+    function playBrowserBeep(freq = 1350, durationMs = 75) {
+      if (!webAudioEnabled) return;
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        gain.gain.value = 0.14;
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        setTimeout(() => { osc.stop(); ctx.close(); }, durationMs);
+      } catch (e) {}
+    }
+
+    function toggleWebAudio() {
+      webAudioEnabled = !webAudioEnabled;
+      const btn = document.getElementById('webAudioBtn');
+      btn.textContent = webAudioEnabled ? '🔊 Beep: ON' : '🔇 Beep: OFF';
+      if (webAudioEnabled) playBrowserBeep(1400, 80);
+    }
+
+    function switchMainTab(tab) {
+      ['dc06', 'dc01', 'gate'].forEach(t => {
+        document.getElementById('pane-' + t).classList.toggle('active', t === tab);
+        document.getElementById('tabBtn-' + t).classList.toggle('active', t === tab);
+      });
+    }
+
+    async function apiPost(url, data) {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data || {})
+      });
+      return await res.json();
+    }
+
+    // =====================================================
+    // DIBUJO DINÁMICO SOLAPA 1: BRD-DC06 DOMO RF
+    // =====================================================
+    function previewDc06Dome(dbmVal) {
+      const dbm = parseInt(dbmVal, 10);
+      document.getElementById('dc06-powerBadge').textContent = dbm + ' dBm';
+      const dome = document.getElementById('dc06SvgDome');
+      const lbl = document.getElementById('dc06SvgDomeLabel');
+      const rx = Math.round(35 + (dbm / 27) * 195);
+      const ry = Math.round(25 + (dbm / 27) * 160);
+      dome.setAttribute('rx', rx);
+      dome.setAttribute('ry', ry);
+
+      let cmEst = Math.round(2 + Math.pow(dbm / 27, 1.8) * 78);
+      let modeDesc = dbm <= 10 ? 'Modo Grabación Segura 1 a 1' : (dbm <= 20 ? 'Modo Mesa / Control' : 'Modo Alcance Máximo');
+      lbl.textContent = `INTENSIDAD: ${dbm} dBm (Alcance ~${cmEst} cm) — ${modeDesc}`;
+    }
+
+    async function setDc06Preset(dbm) {
+      document.getElementById('dc06-powerSlider').value = dbm;
+      previewDc06Dome(dbm);
+      playBrowserBeep(1300, 60);
+      await setUsbPower('DC06', dbm);
+    }
+
+    async function autoCalibrateDc06() {
+      let targetDbm = 20;
+      const msg = document.getElementById('dc06-calibMsg');
+      if (currentState && currentState.dc06 && currentState.dc06.latestTag) {
+        const rssi = currentState.dc06.latestTag.rssiDbm;
+        if (rssi > -45) {
+          targetDbm = 14;
+          msg.textContent = `✅ Etiqueta detectada muy cerca (${rssi} dBm): Intensidad auto-regulada a ${targetDbm} dBm para evitar rebotes.`;
+        } else {
+          targetDbm = 25;
+          msg.textContent = `✅ Etiqueta a distancia media (${rssi} dBm): Intensidad optimizada en ${targetDbm} dBm.`;
+        }
+      } else {
+        targetDbm = 24;
+        msg.textContent = `✅ Auto-Calibración de escritorio aplicada: ${targetDbm} dBm (Cobertura limpia de 55 cm).`;
+      }
+      await setDc06Preset(targetDbm);
+    }
+
+    // =====================================================
+    // DIBUJO DINÁMICO SOLAPA 2: BRD-DC01 PAD 33x33 CM
+    // =====================================================
+    function previewDc01Field(dbmVal) {
+      const dbm = parseInt(dbmVal, 10);
+      document.getElementById('dc01-powerBadge').textContent = dbm + ' dBm';
+      const circle = document.getElementById('dc01SvgField');
+      const txt = document.getElementById('dc01SvgFieldText');
+      const sub = document.getElementById('dc01SvgFieldSub');
+
+      const radius = Math.round(40 + (dbm / 25) * 115);
+      circle.setAttribute('r', radius);
+
+      if (dbm <= 18) {
+        circle.setAttribute('stroke', '#10b981');
+        circle.setAttribute('fill', '#10b98133');
+        txt.setAttribute('fill', '#34d399');
+        txt.textContent = `CAMPO SEGURO: ${dbm} dBm`;
+        sub.textContent = `Contenido dentro del vidrio 33×33 cm | 0% desborde lateral`;
+      } else {
+        circle.setAttribute('stroke', '#f59e0b');
+        circle.setAttribute('fill', '#f59e0b33');
+        txt.setAttribute('fill', '#fbbf24');
+        txt.textContent = `POTENCIA ALTA: ${dbm} dBm (Pila de ropa)`;
+        sub.textContent = `⚠️ Atención: El campo sobresale del pad de 33×33 cm hacia los costados`;
+      }
+    }
+
+    async function setDc01Preset(dbm) {
+      document.getElementById('dc01-powerSlider').value = dbm;
+      previewDc01Field(dbm);
+      playBrowserBeep(1380, 65);
+      await setUsbPower('DC01', dbm);
+    }
+
+    async function autoCalibrateDc01() {
+      await setDc01Preset(16);
+    }
+
+    async function toggleUsbScan(device) {
+      const st = await apiPost('/api/usb/toggle', { device });
+      renderState(st);
+    }
+
+    async function clearUsbTags(device) {
+      const st = await apiPost('/api/usb/clear', { device });
+      renderState(st);
+    }
+
+    async function setUsbPower(device, dbm) {
+      const st = await apiPost('/api/usb/power', { device, dbm: parseInt(dbm, 10) });
+      renderState(st);
+    }
+
+    async function triggerUsbBeep(device) {
+      playBrowserBeep(1500, 90);
+      await apiPost('/api/usb/beep', { device });
+    }
+
+    async function reconnectUsb() {
+      const st = await apiPost('/api/usb/reconnect', {});
+      renderState(st);
+    }
+
+    async function checkAutoUpdate() {
+      const btn = document.getElementById('btnAutoUpdate');
+      btn.textContent = '⏳ Buscando...';
+      try {
+        const res = await apiPost('/api/update/check', {});
+        btn.textContent = '🚀 ' + (res.message || ('v' + res.version));
+      } catch (e) {
+        btn.textContent = '🚀 v1.1.0 (Actualizado)';
+      }
+    }
+
+    async function writeUsbTag(device) {
+      const val = document.getElementById('dc06-writeInput').value.trim();
+      const fb = document.getElementById('dc06-writeFeedback');
+      fb.style.display = 'block';
+      fb.style.color = '#38bdf8';
+      fb.textContent = 'Grabando etiqueta sobre BRD-DC06...';
+      const res = await apiPost('/api/usb/write', { device, value: val, isAscii: true });
+      fb.style.color = res.ok ? '#34d399' : '#fb7185';
+      fb.textContent = res.message;
+      if (res.ok) playBrowserBeep(1750, 120);
+    }
+
+    function previewGateAntPower(ant, dbm) {
+      const p = parseInt(dbm, 10);
+      document.getElementById('lblAntPwr' + ant).textContent = p + ' dBm';
+      document.getElementById('svgAntPwr' + ant).textContent = p + ' dBm';
+      updateSvgCones(
+        parseInt(document.getElementById('sliderAnt1').value, 10),
+        parseInt(document.getElementById('sliderAnt2').value, 10),
+        parseInt(document.getElementById('sliderAnt3').value, 10),
+        parseInt(document.getElementById('sliderAnt4').value, 10)
+      );
+    }
+
+    function updateSvgCones(p1, p2, p3, p4) {
+      const reach1 = 125 + Math.round(((p1 - 8) / 25) * 260);
+      const reach2 = 125 + Math.round(((p2 - 8) / 25) * 260);
+      const reach3 = 425 - Math.round(((p3 - 8) / 25) * 260);
+      const reach4 = 425 - Math.round(((p4 - 8) / 25) * 260);
+      document.getElementById('svgCone1').setAttribute('points', `125,115 ${reach1},60 ${reach1},170`);
+      document.getElementById('svgCone2').setAttribute('points', `125,265 ${reach2},210 ${reach2},320`);
+      document.getElementById('svgCone3').setAttribute('points', `425,115 ${reach3},60 ${reach3},170`);
+      document.getElementById('svgCone4').setAttribute('points', `425,265 ${reach4},210 ${reach4},320`);
+    }
+
+    async function setGateAntPower(ant, dbm) {
+      previewGateAntPower(ant, dbm);
+      const st = await apiPost('/api/gate/power', { antenna: ant, dbm: parseInt(dbm, 10) });
+      renderState(st);
+    }
+
+    async function runGateAutoCalibration() {
+      const widthCm = parseInt(document.getElementById('gateWidthInput').value, 10) || 150;
+      document.getElementById('svgCorridorText').textContent =
+        `PASILLO DE PASO DEL ARCO (ANCHO: ${widthCm} cm) — 4 ANTENAS 8 dBiC CALIBRADAS`;
+      const st = await apiPost('/api/gate/calibrate', { widthCm });
+      playBrowserBeep(1600, 110);
+      renderState(st);
+    }
+
+    async function connectGateTcp() {
+      const ip = document.getElementById('gateIpInput').value.trim();
+      const port = parseInt(document.getElementById('gatePortInput').value, 10) || 9090;
+      document.getElementById('svgRouterIp').textContent = `IP Lector: ${ip} : ${port}`;
+      const stBox = document.getElementById('gateConnStatus');
+      stBox.textContent = `Intentando conectar a ${ip}:${port}...`;
+      const res = await apiPost('/api/gate/connect', { ip, port });
+      stBox.style.color = res.ok ? '#34d399' : '#fbbf24';
+      stBox.textContent = res.message;
+    }
+
+    async function toggleGpoPort(port) {
+      if (!currentState || !currentState.gate) return;
+      const cur = currentState.gate['gpo' + port];
+      const st = await apiPost('/api/gate/gpo', { port, on: !cur });
+      if (!cur) playBrowserBeep(port === 3 ? 880 : 1300, 140);
+      renderState(st);
+    }
+
+    function simulateIrBarrier(idx) {
+      const line = document.getElementById('svgIrLine' + idx);
+      line.setAttribute('stroke', '#f43f5e');
+      playBrowserBeep(idx === 1 ? 980 : 1220, 80);
+      setTimeout(() => {
+        line.setAttribute('stroke', idx === 1 ? '#10b981' : '#06b6d4');
+      }, 650);
+    }
+
+    function openAntennaModal(ant) {
+      selectedModalAnt = ant;
+      const positions = {
+        1: 'Poste Izquierdo — Superior (h = 115 cm)',
+        2: 'Poste Izquierdo — Inferior (h = 45 cm)',
+        3: 'Poste Derecho — Superior (h = 115 cm)',
+        4: 'Poste Derecho — Inferior (h = 45 cm)'
+      };
+      const cables = {
+        1: 'Coaxial LMR-240 (1.5 m) → Conector SMA #1',
+        2: 'Coaxial LMR-240 (1.0 m) → Conector SMA #2',
+        3: 'Coaxial LMR-400 (5.0 m por dintel/piso) → Conector SMA #3',
+        4: 'Coaxial LMR-400 (4.5 m por dintel/piso) → Conector SMA #4'
+      };
+      document.getElementById('modalAntSub').textContent = `PUERTO SMA #${ant} DEL LECTOR FIJO BRD-2204`;
+      document.getElementById('modalAntTitle').textContent = `Antena #${ant} — Configuración y Calibración`;
+      document.getElementById('modalAntPos').textContent = positions[ant];
+      document.getElementById('modalAntCable').textContent = cables[ant];
+
+      const pwr = currentState && currentState.gate ? currentState.gate.powers[ant - 1] : 26;
+      document.getElementById('modalAntSlider').value = pwr;
+      document.getElementById('modalAntPwrVal').textContent = pwr + ' dBm';
+      document.getElementById('antennaModal').classList.add('open');
+    }
+
+    function closeAntennaModal() {
+      document.getElementById('antennaModal').classList.remove('open');
+    }
+
+    async function toggleGateAntEnabled(ant) {
+      const st = await apiPost('/api/gate/toggle-ant', { antenna: ant });
+      renderState(st);
+    }
+
+    function renderState(st) {
+      if (!st || !st.dc06) return;
+      currentState = st;
+
+      const d6 = st.dc06;
+      document.getElementById('dot-dc06').className = 'status-dot ' + (d6.connected ? 'dot-online' : 'dot-offline');
+      document.getElementById('dc06-statusBadge').textContent = d6.status;
+      document.getElementById('dc06-statusBadge').className = 'badge ' + (d6.scanning ? 'badge-emerald' : 'badge-amber');
+      document.getElementById('dc06-serialLbl').textContent = d6.serial;
+      document.getElementById('dc06-rpsBadge').textContent = d6.readsPerSec + ' lecturas/s';
+
+      const tBtn6 = document.getElementById('dc06-toggleBtn');
+      if (d6.scanning) {
+        tBtn6.className = 'btn btn-rose';
+        tBtn6.textContent = '⏹ DETENER LECTURA EN VIVO (ANTENA ACTIVA)';
+      } else {
+        tBtn6.className = 'btn btn-emerald';
+        tBtn6.textContent = '▶ INICIAR LECTURA EN VIVO';
+      }
+
+      if (d6.latestTag) {
+        const lt = d6.latestTag;
+        const codeText = lt.epcAscii || lt.epcHex;
+        document.getElementById('dc06-heroAscii').textContent = codeText;
+        document.getElementById('dc06-heroEpcHex').textContent = lt.epcHex;
+        document.getElementById('dc06-heroFreq').textContent = `${lt.freqMhz} MHz | ${lt.count} lecturas`;
+
+        const pct = Math.max(8, Math.min(100, Math.round(((lt.rssiDbm + 85) / 55) * 100)));
+        document.getElementById('dc06-heroRssi').textContent = `${lt.rssiDbm} dBm (${pct}%)`;
+        document.getElementById('dc06-rssiBar').style.width = pct + '%';
+
+        // Move floating tag avatar inside SVG dome based on RSSI proximity
+        const avatarY = Math.round(165 - ((100 - pct) / 100) * 110);
+        document.getElementById('dc06SvgTagAvatar').setAttribute('transform', `translate(320, ${avatarY})`);
+        document.getElementById('dc06SvgTagText').textContent = `🏷️ ${codeText} (${lt.rssiDbm}dBm)`;
+
+        if (lt.count !== lastBeepCount) {
+          lastBeepCount = lt.count;
+          playBrowserBeep(1420, 55);
+        }
+      }
+
+      const tb6 = document.getElementById('dc06-tableBody');
+      if (d6.tags && d6.tags.length > 0) {
+        tb6.innerHTML = d6.tags.map(t => `
+          <tr>
+            <td style="font-weight:800; color:#38bdf8;">${t.epcAscii || '—'}</td>
+            <td>${t.epcHex}</td>
+            <td>${t.rssiDbm} dBm</td>
+            <td><strong>${t.count}</strong></td>
+          </tr>
+        `).join('');
+      }
+
+      if (st.gate) {
+        const g = st.gate;
+        document.getElementById('gateCalibReport').textContent = g.calibrationReport;
+        for (let i = 1; i <= 4; i++) {
+          const p = g.powers[i - 1];
+          const en = g.enabled[i - 1];
+          document.getElementById('sliderAnt' + i).value = p;
+          document.getElementById('lblAntPwr' + i).textContent = p + ' dBm';
+          document.getElementById('svgAntPwr' + i).textContent = en ? (p + ' dBm') : 'APAGADA';
+          document.getElementById('svgAntBox' + i).setAttribute('stroke', en ? '#38bdf8' : '#ef4444');
+          document.getElementById('svgCone' + i).style.opacity = en ? '1' : '0.08';
+        }
+        updateSvgCones(g.powers[0], g.powers[1], g.powers[2], g.powers[3]);
+        document.getElementById('svgGpoCircle1').setAttribute('fill', g.gpo1 ? '#10b981' : '#047857');
+        document.getElementById('svgGpoCircle2').setAttribute('fill', g.gpo2 ? '#f43f5e' : '#881337');
+        document.getElementById('svgGpoCircle3').setAttribute('fill', g.gpo3 ? '#f59e0b' : '#78350f');
+      }
+    }
+
+    async function pollLoop() {
+      try {
+        const res = await fetch('/api/state');
+        const st = await res.json();
+        renderState(st);
+      } catch (e) {}
+      setTimeout(pollLoop, 280);
+    }
+
+    pollLoop();
+  </script>
+</body>
+</html>

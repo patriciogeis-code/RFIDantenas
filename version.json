@@ -1,0 +1,5 @@
+{
+  "version": "1.0.0",
+  "repo": "patriciogeis-code/RFIDantenas",
+  "notes": "Versión 1.0.0 — Soporte en vivo BRD-DC06 (USB HID), BRD-DC01 (Pad Mostrador) y Arco 4 Antenas BRD-2204 con Auto-Calibración y Auto-Update OTA."
+}
