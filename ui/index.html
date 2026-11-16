@@ -642,256 +642,320 @@
     </div>
 
     <!-- ================================================================= -->
-    <!-- SOLAPA 3: ARCO RFID COMPLETO (4 ANTENAS + LECTOR + ALARMA GPIO)   -->
+    <!-- SOLAPA 3: ARCO RFID COMPLETO (4 ANTENAS + LUZ + PARLANTE + GPO)   -->
     <!-- ================================================================= -->
     <div id="pane-gate" class="tab-pane">
       <div class="grid-gate">
 
-        <!-- IZQUIERDA: DIBUJO INTERACTIVO DEL ARCO + LECTOR + CONEXIONES -->
-        <div class="card">
-          <div class="card-header">
+        <!-- IZQUIERDA: DIBUJO 3D LIMPIO DEL ARCO + REGULADOR AL CLIC + CALIBRADOR ABAJO -->
+        <div class="card" style="display:flex; flex-direction:column; gap:14px;">
+          <div class="card-header" style="margin-bottom:0;">
             <div>
-              <div class="card-title">📐 Esquema Interactivo del Arco RFID (Haz clic en cualquier Antena, Sensor o Alarma)</div>
+              <div class="card-title">📐 Arco RFID 4 Antenas — Toca cualquier Antena, Luz Superior o Parlante</div>
               <div style="font-size:12px; color:var(--muted); margin-top:2px;">
-                Haz clic sobre <strong>ANT 1, ANT 2, ANT 3 o ANT 4</strong> para abrir su Popup de detalle y calibración individual, o sobre el <strong>LED / Sirena</strong> para probar las salidas del lector.
+                Haz clic en una <strong>Antena (1 a 4)</strong> para regular su intensidad y ver sus ondas, o toca la <strong>Luz / Parlante</strong> para activar los GPO.
               </div>
             </div>
-            <span class="badge badge-sky" id="gate-connBadge">Simulador / Red Lista</span>
+            <span class="badge badge-sky" id="gate-connBadge">Cable USB-Red Detectado</span>
           </div>
 
-          <svg id="gateBlueprintSvg" viewBox="0 0 820 490" style="width:100%; height:auto; background:#090d16; border-radius:10px; border:1px solid #1e293b;">
-            <defs>
-              <pattern id="bpGrid" width="24" height="24" patternUnits="userSpaceOnUse">
-                <path d="M 24 0 L 0 0 0 24" fill="none" stroke="#1e293b" stroke-width="0.6" />
-              </pattern>
-              <radialGradient id="coneGradLeft" cx="0%" cy="50%" r="100%">
-                <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.42" />
-                <stop offset="100%" stop-color="#38bdf8" stop-opacity="0.0" />
-              </radialGradient>
-              <radialGradient id="coneGradRight" cx="100%" cy="50%" r="100%">
-                <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.42" />
-                <stop offset="100%" stop-color="#38bdf8" stop-opacity="0.0" />
-              </radialGradient>
-            </defs>
-            <rect width="820" height="490" fill="url(#bpGrid)" />
+          <!-- DIBUJO ESTILO 3D MODERNO DEL ARCO TUBULAR CON ONDAS CYAN, LUZ SUPERIOR Y PARLANTE -->
+          <div style="position:relative;">
+            <svg id="gateBlueprintSvg" viewBox="0 0 820 490" style="width:100%; height:auto; background:radial-gradient(circle at 46% 54%, #111c2d 0%, #090d16 75%); border-radius:12px; border:1px solid #1e293b; display:block;">
+              <defs>
+                <!-- Filtro Neón Cyan para Ondas y Anillos de las Antenas -->
+                <filter id="neonCyanGlow" x="-40%" y="-40%" width="180%" height="180%">
+                  <feGaussianBlur stdDeviation="3.5" result="blur1" />
+                  <feGaussianBlur stdDeviation="8" result="blur2" />
+                  <feMerge>
+                    <feMergeNode in="blur2" />
+                    <feMergeNode in="blur1" />
+                    <feMergeNode in="SourceGraphic" />
+                  </feMerge>
+                </filter>
 
-            <text x="275" y="26" text-anchor="middle" fill="#f59e0b" font-size="13" font-weight="bold" id="svgCorridorText">
-              PASILLO DE PASO DEL ARCO (ANCHO: 150 cm) — 4 ANTENAS 8 dBiC CIRCULARES
-            </text>
-            <line x1="125" y1="36" x2="425" y2="36" stroke="#f59e0b" stroke-width="2" stroke-dasharray="5,3" />
+                <!-- Filtro de Resplandor para Luz Superior y Parlante -->
+                <filter id="beaconGlow" x="-80%" y="-80%" width="260%" height="260%">
+                  <feGaussianBlur stdDeviation="12" result="bigBlur" />
+                  <feMerge>
+                    <feMergeNode in="bigBlur" />
+                    <feMergeNode in="SourceGraphic" />
+                  </feMerge>
+                </filter>
 
-            <!-- CONOS DE RADIACIÓN DINÁMICOS DE LAS 4 ANTENAS -->
-            <polygon id="svgCone1" points="125,115 330,65 330,165" fill="url(#coneGradLeft)" />
-            <polygon id="svgCone2" points="125,265 320,215 320,315" fill="url(#coneGradLeft)" />
-            <polygon id="svgCone3" points="425,115 220,65 220,165" fill="url(#coneGradRight)" />
-            <polygon id="svgCone4" points="425,265 230,215 230,315" fill="url(#coneGradRight)" />
+                <!-- Gradiente Metálico para los Caños del Arco -->
+                <linearGradient id="tubeMetal" x1="0%" y1="0%" x2="100%" y2="0%">
+                  <stop offset="0%" stop-color="#334155" />
+                  <stop offset="45%" stop-color="#94a3b8" />
+                  <stop offset="80%" stop-color="#475569" />
+                  <stop offset="100%" stop-color="#1e293b" />
+                </linearGradient>
 
-            <!-- BARRERAS INFRARROJAS IN1 e IN2 -->
-            <g class="svg-clickable" onclick="simulateIrBarrier(1)">
-              <line x1="125" y1="182" x2="425" y2="182" stroke="#10b981" stroke-width="2.2" stroke-dasharray="6,4" id="svgIrLine1" />
-              <rect x="215" y="169" width="120" height="18" rx="4" fill="#064e3b" stroke="#10b981" stroke-width="1" />
-              <text x="275" y="182" text-anchor="middle" fill="#a7f3d0" font-size="11" font-weight="bold">Haz IR 1 (IN1 Interno)</text>
-            </g>
-            <g class="svg-clickable" onclick="simulateIrBarrier(2)">
-              <line x1="125" y1="208" x2="425" y2="208" stroke="#06b6d4" stroke-width="2.2" stroke-dasharray="6,4" id="svgIrLine2" />
-              <rect x="215" y="198" width="120" height="18" rx="4" fill="#083344" stroke="#06b6d4" stroke-width="1" />
-              <text x="275" y="211" text-anchor="middle" fill="#cffafe" font-size="11" font-weight="bold">Haz IR 2 (IN2 Externo)</text>
-            </g>
+                <!-- Gradiente Cuerpo de Antena 3D -->
+                <linearGradient id="antBodyGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="#475569" />
+                  <stop offset="50%" stop-color="#334155" />
+                  <stop offset="100%" stop-color="#1e293b" />
+                </linearGradient>
+              </defs>
 
-            <!-- PEDESTAL IZQUIERDO -->
-            <rect x="30" y="45" width="95" height="310" rx="8" fill="#1e293b" stroke="#475569" stroke-width="2" />
-            <line x1="26" y1="45" x2="26" y2="355" stroke="#ef4444" stroke-width="4" />
-            <text x="77" y="64" text-anchor="middle" fill="#94a3b8" font-size="11" font-weight="bold">POSTE IZQ</text>
+              <!-- Sombra / Reflejo en el Piso debajo del Arco -->
+              <ellipse cx="385" cy="452" rx="280" ry="22" fill="#00f2fe" opacity="0.06" filter="url(#beaconGlow)" />
+              <line x1="85" y1="452" x2="685" y2="452" stroke="#1e293b" stroke-width="2" />
 
-            <!-- ANTENA 1 (Clicable) -->
-            <g class="svg-clickable" onclick="openAntennaModal(1)">
-              <rect id="svgAntBox1" x="40" y="75" width="75" height="80" rx="6" fill="#0f172a" stroke="#38bdf8" stroke-width="2.5" />
-              <circle cx="77" cy="112" r="20" fill="none" stroke="#38bdf8" stroke-width="1.5" stroke-dasharray="3,2" />
-              <text x="77" y="95" text-anchor="middle" fill="#38bdf8" font-size="12" font-weight="bold">ANTENA 1</text>
-              <text x="77" y="132" text-anchor="middle" fill="#f8fafc" font-size="12" font-weight="bold" id="svgAntPwr1">26 dBm</text>
-              <text x="77" y="148" text-anchor="middle" fill="#94a3b8" font-size="10">h=115cm (Clic)</text>
-            </g>
+              <!-- ========================================================= -->
+              <!-- ESTRUCTURA TUBULAR DOBLE DEL ARCO (PERSPECTIVA 3D LIMPIA) -->
+              <!-- ========================================================= -->
+              <!-- Arco Tubular Trasero -->
+              <path d="M 195 440 L 195 135 Q 195 82 250 82 L 560 82 Q 615 82 615 135 L 615 440"
+                    fill="none" stroke="#334155" stroke-width="11" stroke-linecap="round" />
+              <path d="M 195 440 L 195 135 Q 195 82 250 82 L 560 82 Q 615 82 615 135 L 615 440"
+                    fill="none" stroke="#64748b" stroke-width="3" stroke-linecap="round" opacity="0.6" />
 
-            <!-- ANTENA 2 (Clicable) -->
-            <g class="svg-clickable" onclick="openAntennaModal(2)">
-              <rect id="svgAntBox2" x="40" y="225" width="75" height="80" rx="6" fill="#0f172a" stroke="#38bdf8" stroke-width="2.5" />
-              <circle cx="77" cy="262" r="20" fill="none" stroke="#38bdf8" stroke-width="1.5" stroke-dasharray="3,2" />
-              <text x="77" y="245" text-anchor="middle" fill="#38bdf8" font-size="12" font-weight="bold">ANTENA 2</text>
-              <text x="77" y="282" text-anchor="middle" fill="#f8fafc" font-size="12" font-weight="bold" id="svgAntPwr2">26 dBm</text>
-              <text x="77" y="298" text-anchor="middle" fill="#94a3b8" font-size="10">h=45cm (Clic)</text>
-            </g>
+              <!-- Travesaños de unión entre caño delantero y trasero -->
+              <line x1="150" y1="150" x2="195" y2="138" stroke="#475569" stroke-width="6" stroke-linecap="round" />
+              <line x1="150" y1="325" x2="195" y2="313" stroke="#475569" stroke-width="6" stroke-linecap="round" />
+              <line x1="575" y1="150" x2="615" y2="138" stroke="#475569" stroke-width="6" stroke-linecap="round" />
+              <line x1="575" y1="325" x2="615" y2="313" stroke="#475569" stroke-width="6" stroke-linecap="round" />
 
-            <!-- PEDESTAL DERECHO -->
-            <rect x="425" y="45" width="95" height="310" rx="8" fill="#1e293b" stroke="#475569" stroke-width="2" />
-            <line x1="524" y1="45" x2="524" y2="355" stroke="#ef4444" stroke-width="4" />
-            <text x="472" y="64" text-anchor="middle" fill="#94a3b8" font-size="11" font-weight="bold">POSTE DER</text>
+              <!-- Planchuelas / Bases de Piso -->
+              <polygon points="120,452 215,434 232,440 138,458" fill="#475569" stroke="#64748b" stroke-width="1.5" />
+              <polygon points="550,452 635,434 652,440 568,458" fill="#475569" stroke="#64748b" stroke-width="1.5" />
 
-            <!-- ANTENA 3 (Clicable) -->
-            <g class="svg-clickable" onclick="openAntennaModal(3)">
-              <rect id="svgAntBox3" x="435" y="75" width="75" height="80" rx="6" fill="#0f172a" stroke="#38bdf8" stroke-width="2.5" />
-              <circle cx="472" cy="112" r="20" fill="none" stroke="#38bdf8" stroke-width="1.5" stroke-dasharray="3,2" />
-              <text x="472" y="95" text-anchor="middle" fill="#38bdf8" font-size="12" font-weight="bold">ANTENA 3</text>
-              <text x="472" y="132" text-anchor="middle" fill="#f8fafc" font-size="12" font-weight="bold" id="svgAntPwr3">26 dBm</text>
-              <text x="472" y="148" text-anchor="middle" fill="#94a3b8" font-size="10">h=115cm (Clic)</text>
-            </g>
+              <!-- Arco Tubular Delantero Principal -->
+              <path d="M 150 450 L 150 130 Q 150 68 215 68 L 510 68 Q 575 68 575 130 L 575 450"
+                    fill="none" stroke="url(#tubeMetal)" stroke-width="14" stroke-linecap="round" />
+              <path d="M 148 450 L 148 130 Q 148 66 215 66 L 510 66 Q 573 66 573 130 L 573 450"
+                    fill="none" stroke="#cbd5e1" stroke-width="2.5" stroke-linecap="round" opacity="0.65" />
 
-            <!-- ANTENA 4 (Clicable) -->
-            <g class="svg-clickable" onclick="openAntennaModal(4)">
-              <rect id="svgAntBox4" x="435" y="225" width="75" height="80" rx="6" fill="#0f172a" stroke="#38bdf8" stroke-width="2.5" />
-              <circle cx="472" cy="262" r="20" fill="none" stroke="#38bdf8" stroke-width="1.5" stroke-dasharray="3,2" />
-              <text x="472" y="245" text-anchor="middle" fill="#38bdf8" font-size="12" font-weight="bold">ANTENA 4</text>
-              <text x="472" y="282" text-anchor="middle" fill="#f8fafc" font-size="12" font-weight="bold" id="svgAntPwr4">26 dBm</text>
-              <text x="472" y="298" text-anchor="middle" fill="#94a3b8" font-size="10">h=45cm (Clic)</text>
-            </g>
+              <!-- Puntitos Cyan de Señal Coaxial corriendo por el Arco hacia el Lector BRD-2204 -->
+              <path d="M 175 180 L 175 120 Q 175 75 230 75 L 545 75 Q 595 75 595 135 L 595 360"
+                    fill="none" stroke="#00f2fe" stroke-width="2" stroke-dasharray="2,7" opacity="0.75" />
 
-            <!-- CABLES COAXIALES DESDE LAS 4 ANTENAS AL LECTOR BRD-2204 -->
-            <path d="M 77 155 L 77 390 L 560 390" fill="none" stroke="#38bdf8" stroke-width="1.8" />
-            <path d="M 77 305 L 77 402 L 560 402" fill="none" stroke="#38bdf8" stroke-width="1.8" />
-            <path d="M 472 155 L 472 414 L 560 414" fill="none" stroke="#38bdf8" stroke-width="1.8" />
-            <path d="M 472 305 L 472 426 L 560 426" fill="none" stroke="#38bdf8" stroke-width="1.8" />
-            <text x="275" y="384" text-anchor="middle" fill="#38bdf8" font-size="11" font-weight="bold">
-              4× Cables Coaxiales LMR-240 / LMR-400 (50 Ω) hacia Bocas SMA 1, 2, 3 y 4
-            </text>
+              <!-- ========================================================= -->
+              <!-- LUZ SUPERIOR DEL ARCO (BALIZA GPO O1 VERDE / GPO O2 ROJA) -->
+              <!-- ========================================================= -->
+              <g class="svg-clickable" transform="translate(365, 16)">
+                <!-- Base Metálica sobre el Dintel -->
+                <rect x="-52" y="38" width="104" height="14" rx="5" fill="#1e293b" stroke="#64748b" stroke-width="1.5" />
 
-            <!-- LECTOR FIJO BRD-2204 -->
-            <g transform="translate(555, 290)">
-              <rect x="0" y="0" width="245" height="182" rx="10" fill="#1e293b" stroke="#94a3b8" stroke-width="2.5" />
-              <text x="122" y="22" text-anchor="middle" fill="#f8fafc" font-size="13" font-weight="bold">
-                LECTOR FIJO BRD-2204
-              </text>
-              <text x="122" y="37" text-anchor="middle" fill="#38bdf8" font-size="11" font-weight="bold">
-                Chip Impinj E710 (10–33 dBm | &gt;800 tags/s)
-              </text>
+                <!-- Domo Izquierdo: LUZ VERDE (GPO O1 - Paso Autorizado) -->
+                <g onclick="toggleGpoPort(1)">
+                  <circle id="svgTopLightGreenHalo" cx="-22" cy="22" r="28" fill="#10b981" opacity="0" filter="url(#beaconGlow)" />
+                  <path id="svgTopLightGreenDome" d="M -42 38 Q -42 4 -22 4 Q -2 4 -2 38 Z" fill="#064e3b" stroke="#10b981" stroke-width="2" />
+                  <circle id="svgTopLightGreenCore" cx="-22" cy="24" r="7" fill="#047857" />
+                </g>
 
-              <g transform="translate(12, 48)">
-                <circle cx="12" cy="12" r="8" fill="#ca8a04" stroke="#fef08a" stroke-width="1.5" />
-                <text x="12" y="32" text-anchor="middle" fill="#fef08a" font-size="10" font-weight="bold">SMA1</text>
+                <!-- Domo Derecho: LUZ ROJA (GPO O2 - Alarma Visual) -->
+                <g onclick="toggleGpoPort(2)">
+                  <circle id="svgTopLightRedHalo" cx="22" cy="22" r="28" fill="#f43f5e" opacity="0" filter="url(#beaconGlow)" />
+                  <path id="svgTopLightRedDome" d="M 2 38 Q 2 4 22 4 Q 42 4 42 38 Z" fill="#4c0519" stroke="#f43f5e" stroke-width="2" />
+                  <circle id="svgTopLightRedCore" cx="22" cy="24" r="7" fill="#881337" />
+                </g>
 
-                <circle cx="48" cy="12" r="8" fill="#ca8a04" stroke="#fef08a" stroke-width="1.5" />
-                <text x="48" y="32" text-anchor="middle" fill="#fef08a" font-size="10" font-weight="bold">SMA2</text>
-
-                <circle cx="84" cy="12" r="8" fill="#ca8a04" stroke="#fef08a" stroke-width="1.5" />
-                <text x="84" y="32" text-anchor="middle" fill="#fef08a" font-size="10" font-weight="bold">SMA3</text>
-
-                <circle cx="120" cy="12" r="8" fill="#ca8a04" stroke="#fef08a" stroke-width="1.5" />
-                <text x="120" y="32" text-anchor="middle" fill="#fef08a" font-size="10" font-weight="bold">SMA4</text>
-
-                <rect x="152" y="2" width="66" height="24" rx="3" fill="#0284c7" stroke="#7dd3fc" stroke-width="1.5" />
-                <text x="185" y="18" text-anchor="middle" fill="#fff" font-size="10" font-weight="bold">RJ-45 LAN</text>
+                <text x="0" y="-2" text-anchor="middle" fill="#cbd5e1" font-size="10.5" font-weight="bold">
+                  💡 LUZ ARCO (CLIC: VERDE O1 / ROJA O2)
+                </text>
               </g>
 
-              <rect x="12" y="92" width="221" height="36" rx="4" fill="#065f46" stroke="#34d399" stroke-width="1.5" />
-              <text x="122" y="107" text-anchor="middle" fill="#a7f3d0" font-size="10" font-weight="bold">
-                BORNERA GPIO: [12V OUT] [IN1] [IN2] [O1] [O2] [O3] [O4]
-              </text>
-              <text x="122" y="121" text-anchor="middle" fill="#fff" font-size="10">
-                IN1/IN2: Barreras IR | O1..O3: LEDs y Sirena 12V
+              <!-- ========================================================= -->
+              <!-- ONDAS CONCÉNTRICAS CYAN DE LAS 4 ANTENAS (SE ACOMODAN)    -->
+              <!-- ========================================================= -->
+              <g id="waveGroup1" filter="url(#neonCyanGlow)"></g>
+              <g id="waveGroup2" filter="url(#neonCyanGlow)"></g>
+              <g id="waveGroup3" filter="url(#neonCyanGlow)"></g>
+              <g id="waveGroup4" filter="url(#neonCyanGlow)"></g>
+
+              <!-- Línea Central de Equilibrio (aparece al calibrar) -->
+              <line id="svgCenterBalanceLine" x1="378" y1="105" x2="378" y2="430" stroke="#34d399" stroke-width="2" stroke-dasharray="6,6" opacity="0.0" />
+              <text id="svgCorridorText" x="378" y="102" text-anchor="middle" fill="#94a3b8" font-size="11.5" font-weight="bold">
+                PASO DEL ARCO: 150 cm (Toca cualquier antena para regular sus ondas)
               </text>
 
-              <rect x="12" y="138" width="221" height="32" rx="4" fill="#0f172a" stroke="#475569" stroke-width="1" />
-              <text x="122" y="158" text-anchor="middle" fill="#cbd5e1" font-size="11" font-weight="bold">
-                ⚡ Entrada Fuente: DC 12V / 5A (60W)
-              </text>
-            </g>
+              <!-- ========================================================= -->
+              <!-- LAS 4 ANTENAS CUADRADAS REDONDEADAS CON ANILLO NEÓN CYAN  -->
+              <!-- ========================================================= -->
 
-            <!-- ROUTER / SWITCH DE RED LOCAL -->
-            <g transform="translate(555, 185)">
-              <rect x="0" y="0" width="245" height="72" rx="8" fill="#0f172a" stroke="#0284c7" stroke-width="2" />
-              <text x="122" y="22" text-anchor="middle" fill="#38bdf8" font-size="12" font-weight="bold">
-                🌐 ROUTER / SWITCH DEL LOCAL (RED LAN)
-              </text>
-              <text x="122" y="40" text-anchor="middle" fill="#e2e8f0" font-size="11">
-                Cable UTP Cat6 → RJ-45 del BRD-2204
-              </text>
-              <text x="122" y="57" text-anchor="middle" fill="#34d399" font-size="11" font-weight="bold" id="svgRouterIp">
-                IP Lector: 192.168.1.116 : 9090
-              </text>
-            </g>
-            <line x1="752" y1="257" x2="752" y2="338" stroke="#0284c7" stroke-width="3" stroke-dasharray="4,2" />
-
-            <!-- BALIZA LED + SIRENA ALARMA -->
-            <g transform="translate(555, 35)">
-              <rect x="0" y="0" width="245" height="128" rx="10" fill="#1e293b" stroke="#64748b" stroke-width="2" />
-              <text x="122" y="20" text-anchor="middle" fill="#f8fafc" font-size="12" font-weight="bold">
-                🚨 MÓDULO LED Y ALARMA (CLIC PARA PROBAR)
-              </text>
-
-              <g class="svg-clickable" onclick="toggleGpoPort(1)" transform="translate(14, 32)">
-                <rect id="svgGpoBox1" x="0" y="0" width="68" height="78" rx="6" fill="#064e3b" stroke="#10b981" stroke-width="2" />
-                <circle id="svgGpoCircle1" cx="34" cy="28" r="14" fill="#047857" />
-                <text x="34" y="56" text-anchor="middle" fill="#fff" font-size="11" font-weight="bold">GPO O1</text>
-                <text x="34" y="70" text-anchor="middle" fill="#a7f3d0" font-size="10">LED Verde</text>
+              <!-- ANTENA 1 (Arriba Izquierda) -->
+              <g class="svg-clickable" onclick="selectGateAntenna(1)" transform="translate(155, 130)">
+                <rect x="-12" y="25" width="18" height="8" rx="2" fill="#64748b" />
+                <rect x="-12" y="65" width="18" height="8" rx="2" fill="#64748b" />
+                <rect id="svgAntBox1" x="8" y="4" width="82" height="88" rx="14" transform="skewY(-5)" fill="url(#antBodyGrad)" stroke="#00f2fe" stroke-width="2.5" />
+                <circle id="svgAntRing1" cx="49" cy="45" r="24" fill="none" stroke="#00f2fe" stroke-width="3.5" filter="url(#neonCyanGlow)" />
+                <text x="49" y="20" text-anchor="middle" fill="#e2e8f0" font-size="10" font-weight="bold">ANT 1</text>
+                <text id="svgAntPwr1" x="49" y="49" text-anchor="middle" fill="#ffffff" font-size="12" font-weight="bold">26 dBm</text>
               </g>
 
-              <g class="svg-clickable" onclick="toggleGpoPort(2)" transform="translate(88, 32)">
-                <rect id="svgGpoBox2" x="0" y="0" width="68" height="78" rx="6" fill="#4c0519" stroke="#f43f5e" stroke-width="2" />
-                <circle id="svgGpoCircle2" cx="34" cy="28" r="14" fill="#881337" />
-                <text x="34" y="56" text-anchor="middle" fill="#fff" font-size="11" font-weight="bold">GPO O2</text>
-                <text x="34" y="70" text-anchor="middle" fill="#fda4af" font-size="10">LED Rojo</text>
+              <!-- ANTENA 2 (Abajo Izquierda) -->
+              <g class="svg-clickable" onclick="selectGateAntenna(2)" transform="translate(155, 295)">
+                <rect x="-12" y="25" width="18" height="8" rx="2" fill="#64748b" />
+                <rect x="-12" y="65" width="18" height="8" rx="2" fill="#64748b" />
+                <rect id="svgAntBox2" x="8" y="4" width="82" height="88" rx="14" transform="skewY(-4)" fill="url(#antBodyGrad)" stroke="#00f2fe" stroke-width="2.5" />
+                <circle id="svgAntRing2" cx="49" cy="45" r="24" fill="none" stroke="#00f2fe" stroke-width="3.5" filter="url(#neonCyanGlow)" />
+                <text x="49" y="20" text-anchor="middle" fill="#e2e8f0" font-size="10" font-weight="bold">ANT 2</text>
+                <text id="svgAntPwr2" x="49" y="49" text-anchor="middle" fill="#ffffff" font-size="12" font-weight="bold">26 dBm</text>
               </g>
 
-              <g class="svg-clickable" onclick="toggleGpoPort(3)" transform="translate(162, 32)">
-                <rect id="svgGpoBox3" x="0" y="0" width="68" height="78" rx="6" fill="#451a03" stroke="#f59e0b" stroke-width="2" />
-                <circle id="svgGpoCircle3" cx="34" cy="28" r="14" fill="#78350f" />
-                <text x="34" y="56" text-anchor="middle" fill="#fff" font-size="11" font-weight="bold">GPO O3</text>
-                <text x="34" y="70" text-anchor="middle" fill="#fde68a" font-size="10">Sirena 12V</text>
+              <!-- ANTENA 3 (Arriba Derecha) -->
+              <g class="svg-clickable" onclick="selectGateAntenna(3)" transform="translate(505, 125)">
+                <rect x="76" y="28" width="22" height="8" rx="2" fill="#64748b" />
+                <rect x="76" y="68" width="22" height="8" rx="2" fill="#64748b" />
+                <rect id="svgAntBox3" x="0" y="4" width="80" height="88" rx="14" transform="skewY(5)" fill="url(#antBodyGrad)" stroke="#00f2fe" stroke-width="2.5" />
+                <circle id="svgAntRing3" cx="40" cy="49" r="23" fill="none" stroke="#00f2fe" stroke-width="3.5" filter="url(#neonCyanGlow)" />
+                <text x="40" y="23" text-anchor="middle" fill="#e2e8f0" font-size="10" font-weight="bold">ANT 3</text>
+                <text id="svgAntPwr3" x="40" y="53" text-anchor="middle" fill="#ffffff" font-size="12" font-weight="bold">26 dBm</text>
               </g>
-            </g>
-          </svg>
-        </div>
 
-        <!-- DERECHA: CALIBRADOR AUTOMÁTICO + REGULACIÓN DE LAS 4 ANTENAS + RED -->
-        <div style="display:flex; flex-direction:column; gap:16px;">
-          <div class="card">
-            <div class="card-header">
-              <div class="card-title">🎯 Calibración Automática y Manual del Arco</div>
-            </div>
+              <!-- ANTENA 4 (Abajo Derecha) -->
+              <g class="svg-clickable" onclick="selectGateAntenna(4)" transform="translate(505, 290)">
+                <rect x="76" y="28" width="22" height="8" rx="2" fill="#64748b" />
+                <rect x="76" y="68" width="22" height="8" rx="2" fill="#64748b" />
+                <rect id="svgAntBox4" x="0" y="4" width="80" height="88" rx="14" transform="skewY(4)" fill="url(#antBodyGrad)" stroke="#00f2fe" stroke-width="2.5" />
+                <circle id="svgAntRing4" cx="40" cy="49" r="23" fill="none" stroke="#00f2fe" stroke-width="3.5" filter="url(#neonCyanGlow)" />
+                <text x="40" y="23" text-anchor="middle" fill="#e2e8f0" font-size="10" font-weight="bold">ANT 4</text>
+                <text id="svgAntPwr4" x="40" y="53" text-anchor="middle" fill="#ffffff" font-size="12" font-weight="bold">26 dBm</text>
+              </g>
 
-            <div style="margin-bottom:12px;">
-              <label style="font-size:12px; font-weight:700; color:var(--muted); display:block; margin-bottom:5px;">
-                ANCHO DEL PORTÓN / PASILLO ENTRE POSTES (cm):
-              </label>
-              <div style="display:flex; gap:8px;">
-                <input type="number" id="gateWidthInput" class="input-text" value="150" min="80" max="450" style="width:110px;" />
-                <button class="btn btn-emerald" style="flex:1;" onclick="runGateAutoCalibration()">
-                  🎯 Auto-Calibrar 4 Antenas Solas
-                </button>
+              <!-- ========================================================= -->
+              <!-- AL COSTADO DERECHO: PARLANTE SIRENA (O3) + LECTOR BRD-2204 -->
+              <!-- ========================================================= -->
+
+              <!-- PARLANTE / SIRENA DE ALARMA (GPO O3) MONTADO AL COSTADO -->
+              <g class="svg-clickable" onclick="toggleGpoPort(3)" transform="translate(632, 118)">
+                <circle id="svgSpeakerHalo" cx="42" cy="36" r="38" fill="#f59e0b" opacity="0" filter="url(#beaconGlow)" />
+                <line x1="-16" y1="36" x2="8" y2="36" stroke="#64748b" stroke-width="6" />
+                <rect id="svgSpeakerBox" x="6" y="6" width="76" height="60" rx="12" fill="#1e293b" stroke="#64748b" stroke-width="2.2" />
+                <polygon id="svgSpeakerCone" points="20,30 30,30 42,20 42,52 30,42 20,42" fill="#94a3b8" />
+                <path id="svgSpeakerWave1" d="M 49 27 A 12 12 0 0 1 49 45" fill="none" stroke="#64748b" stroke-width="2.5" stroke-linecap="round" />
+                <path id="svgSpeakerWave2" d="M 55 21 A 20 20 0 0 1 55 51" fill="none" stroke="#64748b" stroke-width="2.5" stroke-linecap="round" />
+                <path id="svgSpeakerWave3" d="M 62 15 A 28 28 0 0 1 62 57" fill="none" stroke="#64748b" stroke-width="2.5" stroke-linecap="round" />
+                <text x="44" y="82" text-anchor="middle" fill="#fde68a" font-size="10.5" font-weight="bold">
+                  🔊 PARLANTE (GPO O3)
+                </text>
+              </g>
+
+              <!-- CAJA DEL LECTOR FIJO BRD-2204 EN EL POSTE DERECHO (IGUAL A LA IMAGEN) -->
+              <g class="svg-clickable" onclick="autoDiscoverGate()" transform="translate(632, 232)">
+                <line x1="-16" y1="26" x2="6" y2="26" stroke="#64748b" stroke-width="5" />
+                <line x1="-16" y1="58" x2="6" y2="58" stroke="#64748b" stroke-width="5" />
+                <rect x="6" y="0" width="84" height="88" rx="14" fill="url(#antBodyGrad)" stroke="#00f2fe" stroke-width="2.5" filter="url(#neonCyanGlow)" />
+                <line x1="16" y1="54" x2="26" y2="54" stroke="#00f2fe" stroke-width="2.5" stroke-linecap="round" />
+                <line x1="16" y1="60" x2="26" y2="60" stroke="#00f2fe" stroke-width="2.5" stroke-linecap="round" />
+                <line x1="16" y1="66" x2="26" y2="66" stroke="#00f2fe" stroke-width="2.5" stroke-linecap="round" />
+                <line x1="16" y1="72" x2="26" y2="72" stroke="#34d399" stroke-width="2.5" stroke-linecap="round" />
+                <text x="52" y="34" text-anchor="middle" fill="#ffffff" font-size="11" font-weight="bold">BRD-2204</text>
+                <text x="52" y="48" text-anchor="middle" fill="#38bdf8" font-size="9.5" font-weight="bold">LECTOR</text>
+                <text id="svgRouterIp" x="48" y="106" text-anchor="middle" fill="#34d399" font-size="10" font-weight="bold">
+                  192.168.1.116
+                </text>
+              </g>
+            </svg>
+
+            <!-- PANEL EMERGENTE COMPACTO AL HACER CLIC EN UNA ANTENA (PARA REGULAR INTENSIDAD EN VIVO) -->
+            <div id="inlineAntPanel" style="display:none; margin-top:12px; background:#0f172a; border:1.5px solid #00f2fe; border-radius:10px; padding:14px; box-shadow:0 8px 25px rgba(0,242,254,0.15);">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                <div>
+                  <span class="badge badge-sky" id="inlineAntBadge">ANTENA #1 SELECCIONADA</span>
+                  <strong style="margin-left:8px; font-size:14px; color:#fff;" id="inlineAntTitle">Poste Izquierdo — Superior (Boca SMA #1)</strong>
+                </div>
+                <div style="display:flex; gap:8px; align-items:center;">
+                  <button class="btn btn-dark" id="inlineAntToggleBtn" onclick="toggleGateAntEnabled(selectedModalAnt)" style="padding:5px 10px; font-size:11.5px;">
+                    ✅ Activa
+                  </button>
+                  <button class="btn btn-dark" onclick="closeAntennaModal()" style="padding:5px 10px; font-size:11.5px;">✕</button>
+                </div>
+              </div>
+              <div style="display:flex; align-items:center; gap:14px;">
+                <span style="font-size:12.5px; color:var(--muted); white-space:nowrap;">Intensidad de Ondas:</span>
+                <input type="range" id="modalAntSlider" min="10" max="33" value="26" style="flex:1;"
+                       oninput="onInlineAntSliderInput(this.value)"
+                       onchange="setGateAntPower(selectedModalAnt, this.value)" />
+                <strong id="modalAntPwrVal" style="color:#00f2fe; font-size:16px; min-width:65px; text-align:right;">26 dBm</strong>
+              </div>
+              <div style="display:flex; gap:8px; margin-top:10px;">
+                <button class="btn btn-dark" style="flex:1; font-size:11.5px;" onclick="quickSetSelectedAnt(16)">🔉 16 dBm (Corto)</button>
+                <button class="btn btn-dark" style="flex:1; font-size:11.5px;" onclick="quickSetSelectedAnt(24)">🎯 24 dBm (Medio)</button>
+                <button class="btn btn-primary" style="flex:1; font-size:11.5px;" onclick="quickSetSelectedAnt(30)">🚀 30 dBm (Largo)</button>
               </div>
             </div>
+          </div>
 
-            <div id="gateCalibReport" style="font-size:12px; background:#090d16; padding:10px; border-radius:8px; border:1px solid #1e293b; color:#38bdf8; margin-bottom:14px; line-height:1.45;">
-              Ajusta las 4 antenas manualmente abajo o toca <strong>Auto-Calibrar</strong> para que el sistema regule la potencia superior/inferior según el ancho del paso.
+          <!-- ABAJO DEL ARCO: BARRA DE CALIBRACIÓN AUTOMÁTICA QUE ACOMODA LAS ONDAS -->
+          <div style="background:#090d16; border:1px solid #1e293b; border-radius:10px; padding:14px;">
+            <div style="display:flex; flex-wrap:wrap; gap:10px; align-items:center; justify-content:space-between;">
+              <div style="display:flex; align-items:center; gap:8px;">
+                <label style="font-size:12.5px; font-weight:700; color:#cbd5e1; white-space:nowrap;">
+                  📏 Ancho del Arco (cm):
+                </label>
+                <input type="number" id="gateWidthInput" class="input-text" value="150" min="80" max="450" style="width:90px; padding:7px 10px;" />
+              </div>
+              <button class="btn btn-emerald" id="btnAnimateCalib" style="flex:1; font-size:13.5px; padding:10px 16px;" onclick="runGateAutoCalibration()">
+                ✨ Calibrar Arco y Acomodar Ondas Automáticamente
+              </button>
+            </div>
+            <div id="gateCalibReport" style="font-size:12px; color:#38bdf8; margin-top:10px; line-height:1.45;">
+              Toca <strong>Calibrar Arco</strong> para ver cómo las ondas de las 4 antenas se acomodan solas según el ancho del pasillo, evitando el rebote en el piso.
+            </div>
+          </div>
+        </div>
+
+        <!-- DERECHA: GPO AL COSTADO (LUZ Y PARLANTE) + CONEXIÓN CABLE USB-RED + LECTURAS -->
+        <div style="display:flex; flex-direction:column; gap:16px;">
+
+          <!-- CONTROL LATERAL DE GPO (LUZ SUPERIOR Y PARLANTE DEL ARCO) -->
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">🚨 Salidas GPO del Arco (Luz Superior y Parlante)</div>
+              <span class="badge badge-sky">Bornera BRD-2204</span>
+            </div>
+            <div style="font-size:12px; color:var(--muted); margin-bottom:10px;">
+              Prueba las salidas físicas del lector (también puedes hacer clic directo sobre la <strong>luz de arriba</strong> o el <strong>parlante del costado</strong> en el dibujo):
+            </div>
+            <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:8px;">
+              <button id="btnSideGpo1" class="btn btn-dark" style="flex-direction:column; padding:12px 8px; gap:4px; border:1.5px solid #10b98155;" onclick="toggleGpoPort(1)">
+                <span style="font-size:18px;">🟢</span>
+                <span style="font-size:12px; font-weight:800; color:#34d399;">Luz Verde</span>
+                <span style="font-size:10px; color:var(--muted);" id="lblSideGpo1">GPO O1: OFF</span>
+              </button>
+              <button id="btnSideGpo2" class="btn btn-dark" style="flex-direction:column; padding:12px 8px; gap:4px; border:1.5px solid #f43f5e55;" onclick="toggleGpoPort(2)">
+                <span style="font-size:18px;">🔴</span>
+                <span style="font-size:12px; font-weight:800; color:#fb7185;">Luz Roja</span>
+                <span style="font-size:10px; color:var(--muted);" id="lblSideGpo2">GPO O2: OFF</span>
+              </button>
+              <button id="btnSideGpo3" class="btn btn-dark" style="flex-direction:column; padding:12px 8px; gap:4px; border:1.5px solid #f59e0b55;" onclick="toggleGpoPort(3)">
+                <span style="font-size:18px;">🔊</span>
+                <span style="font-size:12px; font-weight:800; color:#fbbf24;">Parlante</span>
+                <span style="font-size:10px; color:var(--muted);" id="lblSideGpo3">GPO O3: OFF</span>
+              </button>
             </div>
 
-            <div style="display:flex; flex-direction:column; gap:10px;">
+            <!-- Sliders rápidos de las 4 antenas sincronizados con el dibujo -->
+            <div style="margin-top:14px; padding-top:12px; border-top:1px solid #1e293b; display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
               <div>
-                <div style="display:flex; justify-content:space-between; font-size:12px; font-weight:700;">
-                  <span>📡 Antena 1 (Superior Izq - SMA 1):</span>
-                  <span style="color:var(--sky);" id="lblAntPwr1">26 dBm</span>
+                <div style="display:flex; justify-content:space-between; font-size:11.5px; font-weight:700;">
+                  <span>📡 ANT 1 (Sup. Izq):</span>
+                  <span style="color:#00f2fe;" id="lblAntPwr1">26 dBm</span>
                 </div>
                 <input type="range" id="sliderAnt1" min="10" max="33" value="26" onchange="setGateAntPower(1, this.value)" oninput="previewGateAntPower(1, this.value)" />
               </div>
-
               <div>
-                <div style="display:flex; justify-content:space-between; font-size:12px; font-weight:700;">
-                  <span>📡 Antena 2 (Inferior Izq - SMA 2):</span>
-                  <span style="color:var(--sky);" id="lblAntPwr2">26 dBm</span>
-                </div>
-                <input type="range" id="sliderAnt2" min="10" max="33" value="26" onchange="setGateAntPower(2, this.value)" oninput="previewGateAntPower(2, this.value)" />
-              </div>
-
-              <div>
-                <div style="display:flex; justify-content:space-between; font-size:12px; font-weight:700;">
-                  <span>📡 Antena 3 (Superior Der - SMA 3):</span>
-                  <span style="color:var(--sky);" id="lblAntPwr3">26 dBm</span>
+                <div style="display:flex; justify-content:space-between; font-size:11.5px; font-weight:700;">
+                  <span>📡 ANT 3 (Sup. Der):</span>
+                  <span style="color:#00f2fe;" id="lblAntPwr3">26 dBm</span>
                 </div>
                 <input type="range" id="sliderAnt3" min="10" max="33" value="26" onchange="setGateAntPower(3, this.value)" oninput="previewGateAntPower(3, this.value)" />
               </div>
-
               <div>
-                <div style="display:flex; justify-content:space-between; font-size:12px; font-weight:700;">
-                  <span>📡 Antena 4 (Inferior Der - SMA 4):</span>
-                  <span style="color:var(--sky);" id="lblAntPwr4">26 dBm</span>
+                <div style="display:flex; justify-content:space-between; font-size:11.5px; font-weight:700;">
+                  <span>📡 ANT 2 (Inf. Izq):</span>
+                  <span style="color:#00f2fe;" id="lblAntPwr2">26 dBm</span>
+                </div>
+                <input type="range" id="sliderAnt2" min="10" max="33" value="26" onchange="setGateAntPower(2, this.value)" oninput="previewGateAntPower(2, this.value)" />
+              </div>
+              <div>
+                <div style="display:flex; justify-content:space-between; font-size:11.5px; font-weight:700;">
+                  <span>📡 ANT 4 (Inf. Der):</span>
+                  <span style="color:#00f2fe;" id="lblAntPwr4">26 dBm</span>
                 </div>
                 <input type="range" id="sliderAnt4" min="10" max="33" value="26" onchange="setGateAntPower(4, this.value)" oninput="previewGateAntPower(4, this.value)" />
               </div>
@@ -976,60 +1040,12 @@
 
   </div>
 
-  <!-- POPUP / MODAL DE DETALLE AL HACER CLIC EN UNA ANTENA DEL ARCO -->
-  <div id="antennaModal" class="modal-backdrop" onclick="if(event.target===this) closeAntennaModal()">
-    <div class="modal-box">
-      <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:12px; margin-bottom:14px;">
-        <div>
-          <span style="font-size:11px; font-weight:800; color:var(--sky); text-transform:uppercase;" id="modalAntSub">PUERTO SMA #1 DEL LECTOR BRD-2204</span>
-          <h3 style="font-size:18px; font-weight:800; color:#fff;" id="modalAntTitle">Antena #1 — Superior Izquierda</h3>
-        </div>
-        <button class="btn btn-dark" onclick="closeAntennaModal()">✕ Cerrar</button>
-      </div>
-
-      <div style="background:#090d16; border:1px solid #1e293b; border-radius:10px; padding:14px; margin-bottom:14px; font-size:13px;">
-        <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
-          <span style="color:var(--muted);">Modelo de Antena:</span>
-          <strong>Bowei 8 dBiC Polarización Circular (FCC 902–928 MHz)</strong>
-        </div>
-        <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
-          <span style="color:var(--muted);">Posición Física en el Arco:</span>
-          <strong id="modalAntPos" style="color:#34d399;">Poste Izquierdo — Altura 115 cm</strong>
-        </div>
-        <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
-          <span style="color:var(--muted);">Cable Coaxial al BRD-2204:</span>
-          <strong id="modalAntCable">LMR-240 (1.5 m) → Conector SMA #1</strong>
-        </div>
-        <div style="display:flex; justify-content:space-between;">
-          <span style="color:var(--muted);">Cono de Apertura (Beamwidth):</span>
-          <strong>75° Horizontal × 75° Vertical</strong>
-        </div>
-      </div>
-
-      <div style="margin-bottom:16px;">
-        <div style="display:flex; justify-content:space-between; font-size:13px; font-weight:700; margin-bottom:6px;">
-          <span>Intensidad / Potencia TX de esta Antena (10 a 33 dBm):</span>
-          <span style="color:var(--sky); font-size:15px;" id="modalAntPwrVal">26 dBm</span>
-        </div>
-        <input type="range" id="modalAntSlider" min="10" max="33" value="26"
-               oninput="document.getElementById('modalAntPwrVal').textContent = this.value + ' dBm'; previewGateAntPower(selectedModalAnt, this.value);"
-               onchange="setGateAntPower(selectedModalAnt, this.value)" />
-      </div>
-
-      <div style="display:flex; gap:10px;">
-        <button class="btn btn-primary" style="flex:1;" onclick="toggleGateAntEnabled(selectedModalAnt)" id="modalAntToggleBtn">
-          ✅ Antena Habilitada (Click para Aislar/Apagar)
-        </button>
-        <button class="btn btn-emerald" onclick="closeAntennaModal()">Listo</button>
-      </div>
-    </div>
-  </div>
-
   <script>
     let webAudioEnabled = true;
     let lastBeepCount = 0;
     let selectedModalAnt = 1;
     let currentState = null;
+    let isCalibratingGate = false;
 
     function playBrowserBeep(freq = 1350, durationMs = 75) {
       if (!webAudioEnabled) return;
@@ -1237,11 +1253,63 @@
       if (res.ok) playBrowserBeep(1750, 120);
     }
 
+    // =====================================================
+    // DIBUJO DINÁMICO SOLAPA 3: ARCO 3D Y ONDAS CONCÉNTRICAS
+    // =====================================================
+    function drawSingleAntennaWaves(antIdx, dbm, enabled, customColor) {
+      const grp = document.getElementById('waveGroup' + antIdx);
+      if (!grp) return;
+      if (!enabled) {
+        grp.innerHTML = '';
+        return;
+      }
+
+      const isLeft = (antIdx === 1 || antIdx === 2);
+      const originX = isLeft ? 254 : 498;
+      const originY = (antIdx === 1 || antIdx === 3) ? 176 : 340;
+      const dir = isLeft ? 1 : -1;
+      const sweep = isLeft ? 1 : 0;
+
+      const norm = Math.max(0.08, Math.min(1.0, (dbm - 8) / 25));
+      const maxReach = 24 + norm * 116; // 24px at 10dBm up to 140px at 33dBm
+      const numWaves = Math.max(2, Math.min(6, Math.round(1.8 + norm * 4.2)));
+      const color = customColor || (selectedModalAnt === antIdx ? '#38bdf8' : '#00f2fe');
+
+      let html = '';
+      for (let w = 1; w <= numWaves; w++) {
+        const stepDist = (w / 5.5) * maxReach;
+        const x = Math.round(originX + dir * stepDist);
+        const halfH = Math.round(14 + w * (5.5 + norm * 5.2));
+        const y1 = originY - halfH;
+        const y2 = originY + halfH;
+        const rx = Math.round(16 + w * 7);
+        const ry = Math.round(halfH * 1.15);
+        const op = Math.max(0.22, (1.05 - w * 0.14) * (0.65 + norm * 0.35)).toFixed(2);
+        const sw = (3.4 - w * 0.25).toFixed(1);
+
+        html += `<path d="M ${x} ${y1} A ${rx} ${ry} 0 0 ${sweep} ${x} ${y2}" fill="none" stroke="${color}" stroke-width="${sw}" stroke-linecap="round" opacity="${op}" style="transition: all 0.28s ease-out;" />`;
+      }
+      grp.innerHTML = html;
+    }
+
+    function renderAllGateWaves(p1, p2, p3, p4, enArr, customColor) {
+      const en = enArr || (currentState && currentState.gate ? currentState.gate.enabled : [true, true, true, true]);
+      drawSingleAntennaWaves(1, p1, en[0], customColor);
+      drawSingleAntennaWaves(2, p2, en[1], customColor);
+      drawSingleAntennaWaves(3, p3, en[2], customColor);
+      drawSingleAntennaWaves(4, p4, en[3], customColor);
+    }
+
     function previewGateAntPower(ant, dbm) {
       const p = parseInt(dbm, 10);
+      document.getElementById('sliderAnt' + ant).value = p;
       document.getElementById('lblAntPwr' + ant).textContent = p + ' dBm';
       document.getElementById('svgAntPwr' + ant).textContent = p + ' dBm';
-      updateSvgCones(
+      if (selectedModalAnt === ant) {
+        document.getElementById('modalAntSlider').value = p;
+        document.getElementById('modalAntPwrVal').textContent = p + ' dBm';
+      }
+      renderAllGateWaves(
         parseInt(document.getElementById('sliderAnt1').value, 10),
         parseInt(document.getElementById('sliderAnt2').value, 10),
         parseInt(document.getElementById('sliderAnt3').value, 10),
@@ -1249,15 +1317,15 @@
       );
     }
 
-    function updateSvgCones(p1, p2, p3, p4) {
-      const reach1 = 125 + Math.round(((p1 - 8) / 25) * 260);
-      const reach2 = 125 + Math.round(((p2 - 8) / 25) * 260);
-      const reach3 = 425 - Math.round(((p3 - 8) / 25) * 260);
-      const reach4 = 425 - Math.round(((p4 - 8) / 25) * 260);
-      document.getElementById('svgCone1').setAttribute('points', `125,115 ${reach1},60 ${reach1},170`);
-      document.getElementById('svgCone2').setAttribute('points', `125,265 ${reach2},210 ${reach2},320`);
-      document.getElementById('svgCone3').setAttribute('points', `425,115 ${reach3},60 ${reach3},170`);
-      document.getElementById('svgCone4').setAttribute('points', `425,265 ${reach4},210 ${reach4},320`);
+    function onInlineAntSliderInput(val) {
+      document.getElementById('modalAntPwrVal').textContent = val + ' dBm';
+      previewGateAntPower(selectedModalAnt, val);
+    }
+
+    async function quickSetSelectedAnt(dbm) {
+      previewGateAntPower(selectedModalAnt, dbm);
+      playBrowserBeep(1420, 65);
+      await setGateAntPower(selectedModalAnt, dbm);
     }
 
     async function setGateAntPower(ant, dbm) {
@@ -1268,17 +1336,42 @@
 
     async function runGateAutoCalibration() {
       const widthCm = parseInt(document.getElementById('gateWidthInput').value, 10) || 150;
-      document.getElementById('svgCorridorText').textContent =
-        `PASILLO DE PASO DEL ARCO (ANCHO: ${widthCm} cm) — 4 ANTENAS 8 dBiC CALIBRADAS`;
-      const st = await apiPost('/api/gate/calibrate', { widthCm });
-      playBrowserBeep(1600, 110);
-      renderState(st);
+      const rep = document.getElementById('gateCalibReport');
+      const centerLine = document.getElementById('svgCenterBalanceLine');
+      isCalibratingGate = true;
+
+      // Paso 1: Expandir ondas al máximo para medir cruce
+      rep.style.color = '#fbbf24';
+      rep.innerHTML = `🔄 <strong>Calibrando arco (${widthCm} cm):</strong> Expandiendo ondas para medir cruce central y rebote de piso...`;
+      centerLine.setAttribute('opacity', '0.85');
+      renderAllGateWaves(32, 32, 32, 32, [true, true, true, true], '#fbbf24');
+      playBrowserBeep(1150, 90);
+
+      setTimeout(() => {
+        // Paso 2: Recortar antenas inferiores para evitar rebote en el piso
+        rep.style.color = '#38bdf8';
+        rep.innerHTML = `📐 <strong>Ajustando simetría:</strong> Reduciendo ondas inferiores (ANT 2 y ANT 4) para eliminar rebote metálico en el suelo...`;
+        renderAllGateWaves(27, 19, 27, 19, [true, true, true, true], '#38bdf8');
+        playBrowserBeep(1380, 90);
+      }, 550);
+
+      setTimeout(async () => {
+        // Paso 3: Aplicar calibración final en el servidor y equilibrar ondas
+        const st = await apiPost('/api/gate/calibrate', { widthCm });
+        isCalibratingGate = false;
+        document.getElementById('svgCorridorText').textContent =
+          `PASO DEL ARCO: ${widthCm} cm — ONDAS EQUILIBRADAS SIN REBOTE`;
+        rep.style.color = '#34d399';
+        playBrowserBeep(1680, 130);
+        renderState(st);
+        setTimeout(() => { centerLine.setAttribute('opacity', '0.35'); }, 1200);
+      }, 1150);
     }
 
     async function connectGateTcp() {
       const ip = document.getElementById('gateIpInput').value.trim();
       const port = parseInt(document.getElementById('gatePortInput').value, 10) || 9090;
-      document.getElementById('svgRouterIp').textContent = `IP Lector: ${ip} : ${port}`;
+      document.getElementById('svgRouterIp').textContent = ip;
       const stBox = document.getElementById('gateConnStatus');
       stBox.textContent = `Intentando conectar a ${ip}:${port}...`;
       const res = await apiPost('/api/gate/connect', { ip, port });
@@ -1290,51 +1383,57 @@
       if (!currentState || !currentState.gate) return;
       const cur = currentState.gate['gpo' + port];
       const st = await apiPost('/api/gate/gpo', { port, on: !cur });
-      if (!cur) playBrowserBeep(port === 3 ? 880 : 1300, 140);
+      if (!cur) {
+        if (port === 3) {
+          playBrowserBeep(880, 120);
+          setTimeout(() => playBrowserBeep(1180, 140), 130);
+        } else {
+          playBrowserBeep(1350, 110);
+        }
+      }
       renderState(st);
     }
 
-    function simulateIrBarrier(idx) {
-      const line = document.getElementById('svgIrLine' + idx);
-      line.setAttribute('stroke', '#f43f5e');
-      playBrowserBeep(idx === 1 ? 980 : 1220, 80);
-      setTimeout(() => {
-        line.setAttribute('stroke', idx === 1 ? '#10b981' : '#06b6d4');
-      }, 650);
-    }
-
-    function openAntennaModal(ant) {
+    function selectGateAntenna(ant) {
       selectedModalAnt = ant;
-      const positions = {
-        1: 'Poste Izquierdo — Superior (h = 115 cm)',
-        2: 'Poste Izquierdo — Inferior (h = 45 cm)',
-        3: 'Poste Derecho — Superior (h = 115 cm)',
-        4: 'Poste Derecho — Inferior (h = 45 cm)'
+      const titles = {
+        1: 'Poste Izquierdo — Superior (h=115cm | Boca SMA #1)',
+        2: 'Poste Izquierdo — Inferior (h=45cm | Boca SMA #2)',
+        3: 'Poste Derecho — Superior (h=115cm | Boca SMA #3)',
+        4: 'Poste Derecho — Inferior (h=45cm | Boca SMA #4)'
       };
-      const cables = {
-        1: 'Coaxial LMR-240 (1.5 m) → Conector SMA #1',
-        2: 'Coaxial LMR-240 (1.0 m) → Conector SMA #2',
-        3: 'Coaxial LMR-400 (5.0 m por dintel/piso) → Conector SMA #3',
-        4: 'Coaxial LMR-400 (4.5 m por dintel/piso) → Conector SMA #4'
-      };
-      document.getElementById('modalAntSub').textContent = `PUERTO SMA #${ant} DEL LECTOR FIJO BRD-2204`;
-      document.getElementById('modalAntTitle').textContent = `Antena #${ant} — Configuración y Calibración`;
-      document.getElementById('modalAntPos').textContent = positions[ant];
-      document.getElementById('modalAntCable').textContent = cables[ant];
+      document.getElementById('inlineAntBadge').textContent = `ANTENA #${ant} SELECCIONADA`;
+      document.getElementById('inlineAntTitle').textContent = titles[ant];
 
-      const pwr = currentState && currentState.gate ? currentState.gate.powers[ant - 1] : 26;
+      const pwr = currentState && currentState.gate ? currentState.gate.powers[ant - 1] : parseInt(document.getElementById('sliderAnt' + ant).value, 10);
+      const en = currentState && currentState.gate ? currentState.gate.enabled[ant - 1] : true;
       document.getElementById('modalAntSlider').value = pwr;
       document.getElementById('modalAntPwrVal').textContent = pwr + ' dBm';
-      document.getElementById('antennaModal').classList.add('open');
+      const tBtn = document.getElementById('inlineAntToggleBtn');
+      tBtn.textContent = en ? '✅ Antena Activa (Apagar)' : '🚫 Antena Apagada (Encender)';
+      tBtn.className = 'btn ' + (en ? 'btn-dark' : 'btn-rose');
+
+      for (let i = 1; i <= 4; i++) {
+        const box = document.getElementById('svgAntBox' + i);
+        if (box) box.setAttribute('stroke-width', i === ant ? '4' : '2.5');
+      }
+
+      document.getElementById('inlineAntPanel').style.display = 'block';
+      playBrowserBeep(1480, 50);
     }
 
     function closeAntennaModal() {
-      document.getElementById('antennaModal').classList.remove('open');
+      document.getElementById('inlineAntPanel').style.display = 'none';
+      for (let i = 1; i <= 4; i++) {
+        const box = document.getElementById('svgAntBox' + i);
+        if (box) box.setAttribute('stroke-width', '2.5');
+      }
     }
 
     async function toggleGateAntEnabled(ant) {
       const st = await apiPost('/api/gate/toggle-ant', { antenna: ant });
       renderState(st);
+      selectGateAntenna(ant);
     }
 
     function renderState(st) {
@@ -1477,22 +1576,46 @@
           `).join('');
         }
 
-        document.getElementById('gateCalibReport').textContent = g.calibrationReport;
-        for (let i = 1; i <= 4; i++) {
-          const p = g.powers[i - 1];
-          const en = g.enabled[i - 1];
-          document.getElementById('sliderAnt' + i).value = p;
-          document.getElementById('lblAntPwr' + i).textContent = p + ' dBm';
-          document.getElementById('svgAntPwr' + i).textContent = en ? (p + ' dBm') : 'APAGADA';
-          document.getElementById('svgAntBox' + i).setAttribute('stroke', en ? '#38bdf8' : '#ef4444');
-          document.getElementById('svgCone' + i).style.opacity = en ? '1' : '0.08';
+        if (!isCalibratingGate) {
+          document.getElementById('gateCalibReport').textContent = g.calibrationReport;
+          for (let i = 1; i <= 4; i++) {
+            const p = g.powers[i - 1];
+            const en = g.enabled[i - 1];
+            document.getElementById('sliderAnt' + i).value = p;
+            document.getElementById('lblAntPwr' + i).textContent = p + ' dBm';
+            document.getElementById('svgAntPwr' + i).textContent = en ? (p + ' dBm') : 'OFF';
+            document.getElementById('svgAntBox' + i).setAttribute('stroke', en ? '#00f2fe' : '#ef4444');
+            document.getElementById('svgAntRing' + i).setAttribute('stroke', en ? '#00f2fe' : '#475569');
+          }
+          renderAllGateWaves(g.powers[0], g.powers[1], g.powers[2], g.powers[3], g.enabled);
         }
-        updateSvgCones(g.powers[0], g.powers[1], g.powers[2], g.powers[3]);
-        document.getElementById('svgGpoCircle1').setAttribute('fill', g.gpo1 ? '#10b981' : '#047857');
-        document.getElementById('svgGpoCircle2').setAttribute('fill', g.gpo2 ? '#f43f5e' : '#881337');
-        document.getElementById('svgGpoCircle3').setAttribute('fill', g.gpo3 ? '#f59e0b' : '#78350f');
+
+        // Actualizar Luz Superior (GPO O1 Verde / GPO O2 Roja) y Parlante al costado (GPO O3)
+        document.getElementById('svgTopLightGreenHalo').setAttribute('opacity', g.gpo1 ? '0.9' : '0');
+        document.getElementById('svgTopLightGreenDome').setAttribute('fill', g.gpo1 ? '#10b981' : '#064e3b');
+        document.getElementById('svgTopLightGreenCore').setAttribute('fill', g.gpo1 ? '#d1fae5' : '#047857');
+        document.getElementById('lblSideGpo1').textContent = g.gpo1 ? 'GPO O1: ENCENDIDA' : 'GPO O1: OFF';
+        document.getElementById('btnSideGpo1').style.background = g.gpo1 ? '#064e3b' : '';
+
+        document.getElementById('svgTopLightRedHalo').setAttribute('opacity', g.gpo2 ? '0.9' : '0');
+        document.getElementById('svgTopLightRedDome').setAttribute('fill', g.gpo2 ? '#f43f5e' : '#4c0519');
+        document.getElementById('svgTopLightRedCore').setAttribute('fill', g.gpo2 ? '#ffe4e6' : '#881337');
+        document.getElementById('lblSideGpo2').textContent = g.gpo2 ? 'GPO O2: ENCENDIDA' : 'GPO O2: OFF';
+        document.getElementById('btnSideGpo2').style.background = g.gpo2 ? '#4c0519' : '';
+
+        document.getElementById('svgSpeakerHalo').setAttribute('opacity', g.gpo3 ? '0.9' : '0');
+        document.getElementById('svgSpeakerBox').setAttribute('stroke', g.gpo3 ? '#fbbf24' : '#64748b');
+        document.getElementById('svgSpeakerCone').setAttribute('fill', g.gpo3 ? '#fbbf24' : '#94a3b8');
+        ['1', '2', '3'].forEach(w => {
+          document.getElementById('svgSpeakerWave' + w).setAttribute('stroke', g.gpo3 ? '#00f2fe' : '#64748b');
+        });
+        document.getElementById('lblSideGpo3').textContent = g.gpo3 ? 'GPO O3: SONANDO' : 'GPO O3: OFF';
+        document.getElementById('btnSideGpo3').style.background = g.gpo3 ? '#451a03' : '';
       }
     }
+
+    // Dibujar ondas iniciales al cargar la página
+    renderAllGateWaves(26, 26, 26, 26, [true, true, true, true]);
 
     async function pollLoop() {
       try {
