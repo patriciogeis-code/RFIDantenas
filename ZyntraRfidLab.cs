@@ -356,15 +356,13 @@ namespace ZyntraRfidLab
                 Task.Run(() => ReadLoop(_cts.Token));
                 Thread.Sleep(80);
 
-                // Initialize after USB plug-in: ensure UsbKbdSwitch=0, Stop, GetReaderInfo, SetPower
-                SendFrame(GxProtocol.BuildFrame(0x01, 0x2B, new byte[] { 0x01, 0x01, 0x00 }));
-                Thread.Sleep(180);
+                // Initialize in Command Mode: Stop -> GetReaderInfo -> SetPower
                 SendFrame(GxProtocol.BuildFrame(0x02, 0xFF, null));
-                Thread.Sleep(140);
+                Thread.Sleep(150);
                 SendFrame(GxProtocol.BuildFrame(0x01, 0x00, null)); // GetReaderInfo
                 Thread.Sleep(150);
                 SendFrame(GxProtocol.BuildFrame(0x02, 0x01, new byte[] { 0x01, (byte)PowerDbm })); // SetPower
-                Thread.Sleep(220);
+                Thread.Sleep(150);
                 LastStatusMessage = "Conectado por USB HID (Canal 64B Activo)";
                 return true;
             }
@@ -586,11 +584,6 @@ namespace ZyntraRfidLab
                     var ar = _fsRead.BeginRead(buf, 0, 65, null, null);
                     while (!token.IsCancellationRequested && !ar.AsyncWaitHandle.WaitOne(250))
                     {
-                        if (!IsDevicePathPresent(DevicePath))
-                        {
-                            HandlePhysicalDisconnect();
-                            return;
-                        }
                     }
                     if (token.IsCancellationRequested) break;
                     int n = _fsRead.EndRead(ar);
