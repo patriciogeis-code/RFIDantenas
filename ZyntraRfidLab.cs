@@ -27,7 +27,7 @@ namespace ZyntraRfidLab
 {
     public static class AutoUpdater
     {
-        public const string CurrentVersion = "1.2.0";
+        public const string CurrentVersion = "1.2.2";
         public static string GithubRepo = "patriciogeis-code/RFIDantenas";
         public static string LastCheckStatus = "v" + CurrentVersion + " (Actualizado)";
         public static string RemoteVersion = CurrentVersion;
@@ -356,14 +356,18 @@ namespace ZyntraRfidLab
                 Task.Run(() => ReadLoop(_cts.Token));
                 Thread.Sleep(80);
 
-                // Initialize in Command Mode: Stop -> GetReaderInfo -> SetPower
+                // Initialize in Command Mode: Stop -> GetReaderInfo -> SetPower -> SetBaseband (Session 0, Q=1, Dual Target A/B, AutoDormancy OFF)
                 SendFrame(GxProtocol.BuildFrame(0x02, 0xFF, null));
                 Thread.Sleep(150);
                 SendFrame(GxProtocol.BuildFrame(0x01, 0x00, null)); // GetReaderInfo
+                Thread.Sleep(120);
+                SendFrame(GxProtocol.BuildFrame(0x02, 0x0D, new byte[] { 0x00 })); // AutoDormancy OFF
+                Thread.Sleep(120);
+                SendFrame(GxProtocol.BuildFrame(0x02, 0x0B, new byte[] { 0x01, 0x01, 0x02, 0x01, 0x03, 0x00, 0x04, 0x02 })); // Miller-4, Q=1, Session 0, Dual Target A/B
                 Thread.Sleep(150);
                 SendFrame(GxProtocol.BuildFrame(0x02, 0x01, new byte[] { 0x01, (byte)PowerDbm })); // SetPower
                 Thread.Sleep(150);
-                LastStatusMessage = "Conectado por USB HID (Canal 64B Activo)";
+                LastStatusMessage = "Conectado (S0 Instantáneo + Dual A/B Activo)";
                 return true;
             }
             catch (Exception ex)
@@ -774,15 +778,29 @@ namespace ZyntraRfidLab
     {
         public string ReaderIp = "192.168.1.116";
         public int ReaderPort = 9090;
+        public string SerialNumber = "BRD-2204 (4 Puertos SMA)";
         public bool Connected = false;
         public bool Scanning = false;
         public bool SimulationMode = false;
-        public string StatusText = "Desconectado (Conectar BRD-2204 al Router por RJ-45)";
+        public string StatusText = "Cable USB-Red detectado — Configura IP o toca Auto-Detectar";
+
+        // USB-to-Ethernet Adapter Status
+        public bool UsbLanConnected = false;
+        public bool UsbLanReady = false;
+        public string UsbLanAdapterName = "Ethernet";
+        public string UsbLanDescription = "";
+        public string UsbLanIp = "";
 
         public int[] AntennaPower = new int[] { 26, 26, 26, 26 }; // ANT 1..4 in dBm (10..33)
         public bool[] AntennaEnabled = new bool[] { true, true, true, true };
         public int[] AntennaReadCounts = new int[] { 0, 0, 0, 0 };
         public int[] AntennaLastRssi = new int[] { -75, -75, -75, -75 };
+
+        public long TotalReads = 0;
+        public int ReadsPerSec = 0;
+        private int _readsInCurrentSec = 0;
+        private long _lastRpsTickMs = 0;
+        public TagReadRecord LatestTag = null;
 
         public int RssiThresholdDbm = -62;
         public int CorridorWidthCm = 150;
@@ -801,23 +819,264 @@ namespace ZyntraRfidLab
         private TcpClient _tcpClient;
         private NetworkStream _netStream;
         private CancellationTokenSource _cts;
+        private readonly object _txLock = new object();
         public ConcurrentDictionary<string, TagReadRecord> GateTags = new ConcurrentDictionary<string, TagReadRecord>();
+
+        public void CheckUsbEthernetAdapter()
+        {
+            try
+            {
+                NetworkInterface bestNic = null;
+                foreach (NetworkInterface nic in NetworkInterface.GetAllNetworkInterfaces())
+                {
+                    if (nic.NetworkInterfaceType == NetworkInterfaceType.Loopback ||
+                        nic.NetworkInterfaceType == NetworkInterfaceType.Tunnel ||
+                        nic.NetworkInterfaceType == NetworkInterfaceType.Wireless80211)
+                        continue;
+
+                    string desc = nic.Description ?? "";
+                    string name = nic.Name ?? "";
+                    if (desc.IndexOf("Virtual", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                        desc.IndexOf("Bluetooth", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                        desc.IndexOf("Hyper-V", StringComparison.OrdinalIgnoreCase) >= 0)
+                        continue;
+
+                    if (nic.OperationalStatus == OperationalStatus.Up)
+                    {
+                        bestNic = nic;
+                        if (desc.IndexOf("USB", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                            desc.IndexOf("Realtek", StringComparison.OrdinalIgnoreCase) >= 0)
+                            break;
+                    }
+                    else if (bestNic == null && (desc.IndexOf("USB", StringComparison.OrdinalIgnoreCase) >= 0 || name.IndexOf("Ethernet", StringComparison.OrdinalIgnoreCase) >= 0))
+                    {
+                        bestNic = nic;
+                    }
+                }
+
+                if (bestNic == null)
+                {
+                    UsbLanConnected = false;
+                    UsbLanReady = false;
+                    UsbLanDescription = "No detectado";
+                    UsbLanIp = "Sin adaptador Ethernet";
+                    return;
+                }
+
+                UsbLanAdapterName = bestNic.Name;
+                UsbLanDescription = bestNic.Description;
+                UsbLanConnected = (bestNic.OperationalStatus == OperationalStatus.Up);
+
+                var ipProps = bestNic.GetIPProperties();
+                List<string> ipv4List = new List<string>();
+                bool hasSubnet192 = false;
+                foreach (var ua in ipProps.UnicastAddresses)
+                {
+                    if (ua.Address.AddressFamily == AddressFamily.InterNetwork)
+                    {
+                        string ipStr = ua.Address.ToString();
+                        ipv4List.Add(ipStr);
+                        if (ipStr.StartsWith("192.168.1.") || ipStr.StartsWith("192.168.0."))
+                            hasSubnet192 = true;
+                    }
+                }
+
+                UsbLanIp = ipv4List.Count > 0 ? string.Join(", ", ipv4List.ToArray()) : "Sin IP";
+                UsbLanReady = UsbLanConnected && hasSubnet192;
+
+                if (!Connected)
+                {
+                    if (!UsbLanConnected)
+                        StatusText = "Adaptador " + UsbLanDescription + ": Cable RJ-45 desconectado o lector apagado";
+                    else if (!UsbLanReady)
+                        StatusText = "Cable USB-Red activo (" + UsbLanIp + ") — Toca 'Configurar IP del Cable USB-Red' para habilitar la subred 192.168.1.x";
+                    else
+                        StatusText = "Cable USB-Red listo (" + UsbLanIp + ") — Toca 'Auto-Detectar BRD-2204'";
+                }
+            }
+            catch { }
+        }
+
+        public bool ConfigureUsbEthernetSubnet(out string msg)
+        {
+            CheckUsbEthernetAdapter();
+            string nicName = string.IsNullOrEmpty(UsbLanAdapterName) ? "Ethernet" : UsbLanAdapterName;
+            try
+            {
+                string cmdArgs = string.Format(
+                    "/c netsh interface ip set address name=\"{0}\" static 192.168.1.200 255.255.255.0 none & netsh interface ip add address name=\"{0}\" 192.168.0.200 255.255.255.0",
+                    nicName
+                );
+                ProcessStartInfo psi = new ProcessStartInfo
+                {
+                    FileName = "cmd.exe",
+                    Arguments = cmdArgs,
+                    Verb = "runas",
+                    UseShellExecute = true,
+                    WindowStyle = ProcessWindowStyle.Hidden
+                };
+                Process p = Process.Start(psi);
+                if (p != null)
+                {
+                    p.WaitForExit(12000);
+                }
+                Thread.Sleep(1500);
+                CheckUsbEthernetAdapter();
+                if (UsbLanReady)
+                {
+                    string discMsg;
+                    if (AutoDiscoverAndConnect(out discMsg))
+                    {
+                        msg = "Adaptador USB-Red configurado en 192.168.1.200 y " + discMsg;
+                        return true;
+                    }
+                    msg = "Adaptador USB-Red configurado en 192.168.1.200 (" + discMsg + ")";
+                    return true;
+                }
+                msg = "No se detectó el cambio a 192.168.1.200 (verifica aceptar el permiso de Windows en la notebook).";
+                return false;
+            }
+            catch (Exception ex)
+            {
+                msg = "Configuración cancelada o pendiente de confirmación en Windows: " + ex.Message;
+                return false;
+            }
+        }
+
+        public bool AutoDiscoverAndConnect(out string msg)
+        {
+            CheckUsbEthernetAdapter();
+            // 1. Listen briefly for UDP multicast 230.1.1.168:8161 (GMulticast from reader.jar)
+            try
+            {
+                using (UdpClient udp = new UdpClient())
+                {
+                    udp.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+                    udp.Client.Bind(new IPEndPoint(IPAddress.Any, 8161));
+                    IPAddress mcast = IPAddress.Parse("230.1.1.168");
+                    udp.JoinMulticastGroup(mcast);
+                    udp.Client.ReceiveTimeout = 650;
+                    IPEndPoint ep = new IPEndPoint(IPAddress.Any, 0);
+                    byte[] data = udp.Receive(ref ep);
+                    if (data != null && data.Length > 0)
+                    {
+                        string ascii = Encoding.ASCII.GetString(data);
+                        string foundIp = ExtractKeyVal(ascii, "IP") ?? ep.Address.ToString();
+                        string foundPortStr = ExtractKeyVal(ascii, "PORT") ?? "9090";
+                        int foundPort;
+                        if (!int.TryParse(foundPortStr, out foundPort)) foundPort = 9090;
+                        if (ConnectTcp(foundIp, foundPort, out msg))
+                            return true;
+                    }
+                }
+            }
+            catch { }
+
+            // 2. Parallel TCP probe of common BRD-2204 factory IPs and ports
+            string[] candidateIps = new string[]
+            {
+                ReaderIp,
+                "192.168.1.116",
+                "192.168.1.168",
+                "192.168.1.100",
+                "192.168.1.250",
+                "192.168.1.1",
+                "192.168.0.116",
+                "192.168.0.168",
+                "192.168.0.100"
+            };
+            int[] candidatePorts = new int[] { 9090, 8160, 6000, 4001 };
+
+            string matchedIp = null;
+            int matchedPort = 9090;
+            object matchLock = new object();
+            List<Task> tasks = new List<Task>();
+
+            HashSet<string> seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string cip in candidateIps)
+            {
+                if (string.IsNullOrWhiteSpace(cip)) continue;
+                foreach (int cport in candidatePorts)
+                {
+                    string key = cip + ":" + cport;
+                    if (!seen.Add(key)) continue;
+                    string testIp = cip;
+                    int testPort = cport;
+                    tasks.Add(Task.Run(() =>
+                    {
+                        try
+                        {
+                            using (TcpClient tc = new TcpClient())
+                            {
+                                var ar = tc.BeginConnect(testIp, testPort, null, null);
+                                if (ar.AsyncWaitHandle.WaitOne(TimeSpan.FromMilliseconds(700)) && tc.Connected)
+                                {
+                                    lock (matchLock)
+                                    {
+                                        if (matchedIp == null)
+                                        {
+                                            matchedIp = testIp;
+                                            matchedPort = testPort;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        catch { }
+                    }));
+                }
+            }
+
+            try { Task.WaitAll(tasks.ToArray(), 950); } catch { }
+
+            if (matchedIp != null)
+            {
+                return ConnectTcp(matchedIp, matchedPort, out msg);
+            }
+
+            if (UsbLanConnected && !UsbLanReady)
+            {
+                StatusText = "El cable USB-Red tiene IP " + UsbLanIp + ". Toca '1. Configurar IP del Cable USB-Red (192.168.1.200)' primero.";
+            }
+            else
+            {
+                StatusText = "No respondió BRD-2204 en 192.168.1.116 / .168 (Verifica que la fuente DC 12V del lector esté enchufada).";
+            }
+            msg = StatusText;
+            return false;
+        }
+
+        private static string ExtractKeyVal(string text, string key)
+        {
+            if (string.IsNullOrEmpty(text)) return null;
+            int idx = text.IndexOf(key + "=", StringComparison.OrdinalIgnoreCase);
+            if (idx < 0) idx = text.IndexOf(key + ":", StringComparison.OrdinalIgnoreCase);
+            if (idx < 0) return null;
+            int start = idx + key.Length + 1;
+            int end = text.IndexOfAny(new char[] { ',', ';', '\r', '\n', ' ', '}' }, start);
+            if (end < 0) end = text.Length;
+            return text.Substring(start, end - start).Trim('\'', '"', ' ');
+        }
 
         public bool ConnectTcp(string ip, int port, out string msg)
         {
             DisconnectTcp();
+            CheckUsbEthernetAdapter();
             ReaderIp = ip;
             ReaderPort = port;
             try
             {
                 _tcpClient = new TcpClient();
                 var res = _tcpClient.BeginConnect(ip, port, null, null);
-                bool success = res.AsyncWaitHandle.WaitOne(TimeSpan.FromMilliseconds(1800));
+                bool success = res.AsyncWaitHandle.WaitOne(TimeSpan.FromMilliseconds(1600));
                 if (!success || !_tcpClient.Connected)
                 {
                     _tcpClient.Close();
                     Connected = false;
-                    StatusText = "No se encontró BRD-2204 en " + ip + ":" + port + " (Verifica conexión RJ-45 al Router)";
+                    if (UsbLanConnected && !UsbLanReady)
+                        StatusText = "El cable USB-Red está en " + UsbLanIp + " — Toca 'Configurar IP del Cable USB-Red (192.168.1.200)' para conectar al BRD-2204.";
+                    else
+                        StatusText = "No se encontró BRD-2204 en " + ip + ":" + port + " (Verifica fuente 12V y cable RJ-45)";
                     msg = StatusText;
                     return false;
                 }
@@ -828,11 +1087,22 @@ namespace ZyntraRfidLab
                 _cts = new CancellationTokenSource();
                 Task.Run(() => TcpReadLoop(_cts.Token));
 
-                // Stop and query powers
+                // Initialize GX protocol on BRD-2204: Stop, GetReaderInfo, GetPower, AutoDormancy OFF, Baseband Fast Dual Target
                 SendTcpFrame(GxProtocol.BuildFrame(0x02, 0xFF, null));
                 Thread.Sleep(60);
+                SendTcpFrame(GxProtocol.BuildFrame(0x01, 0x00, null));
+                Thread.Sleep(50);
+                SendTcpFrame(GxProtocol.BuildFrame(0x02, 0x02, null));
+                Thread.Sleep(50);
+                SendTcpFrame(GxProtocol.BuildFrame(0x02, 0x0D, new byte[] { 0x00 }));
+                Thread.Sleep(50);
+                SendTcpFrame(GxProtocol.BuildFrame(0x02, 0x0B, new byte[] { 0x01, 0x01, 0x02, 0x01, 0x03, 0x00, 0x04, 0x02 }));
+                Thread.Sleep(50);
                 SyncPowerToHardware();
-                StatusText = "BRD-2204 Conectado en Red (" + ip + ":" + port + ")";
+                Thread.Sleep(80);
+                StartInventory();
+
+                StatusText = "BRD-2204 Conectado y Leyendo (" + ip + ":" + port + ")";
                 msg = StatusText;
                 return true;
             }
@@ -847,26 +1117,83 @@ namespace ZyntraRfidLab
 
         public void DisconnectTcp()
         {
+            Scanning = false;
+            try
+            {
+                if (Connected && _netStream != null)
+                    SendTcpFrame(GxProtocol.BuildFrame(0x02, 0xFF, null));
+            }
+            catch { }
             try { if (_cts != null) _cts.Cancel(); } catch { }
             try { if (_netStream != null) _netStream.Close(); } catch { }
             try { if (_tcpClient != null) _tcpClient.Close(); } catch { }
             Connected = false;
-            Scanning = false;
         }
 
         public void SendTcpFrame(byte[] frame)
         {
-            if (!Connected || _netStream == null) return;
-            try
+            if (!Connected || _netStream == null || frame == null) return;
+            lock (_txLock)
             {
-                _netStream.Write(frame, 0, frame.Length);
-                _netStream.Flush();
+                try
+                {
+                    _netStream.Write(frame, 0, frame.Length);
+                    _netStream.Flush();
+                }
+                catch { }
             }
-            catch { }
+        }
+
+        private byte GetEnabledAntennaMask()
+        {
+            byte mask = 0;
+            for (int i = 0; i < 4; i++)
+            {
+                if (AntennaEnabled[i]) mask |= (byte)(1 << i);
+            }
+            if (mask == 0) mask = 0x0F;
+            return mask;
+        }
+
+        public void StartInventory()
+        {
+            if (!Connected) return;
+            Scanning = true;
+            byte mask = GetEnabledAntennaMask();
+            SendTcpFrame(GxProtocol.BuildFrame(0x02, 0x10, new byte[] { 0x00, 0x00, 0x00, mask, 0x01 }));
+            StatusText = "BRD-2204 Leyendo en Vivo (" + ReaderIp + ":" + ReaderPort + ")";
+        }
+
+        public void StopInventory()
+        {
+            Scanning = false;
+            if (!Connected) return;
+            SendTcpFrame(GxProtocol.BuildFrame(0x02, 0xFF, null));
+            StatusText = "BRD-2204 en Espera (" + ReaderIp + ":" + ReaderPort + ")";
+        }
+
+        public void ClearTags()
+        {
+            GateTags.Clear();
+            LatestTag = null;
+            TotalReads = 0;
+            ReadsPerSec = 0;
+            for (int i = 0; i < 4; i++)
+            {
+                AntennaReadCounts[i] = 0;
+                AntennaLastRssi[i] = -75;
+            }
         }
 
         public void SyncPowerToHardware()
         {
+            if (!Connected) return;
+            bool wasScanning = Scanning;
+            if (wasScanning)
+            {
+                SendTcpFrame(GxProtocol.BuildFrame(0x02, 0xFF, null));
+                Thread.Sleep(50);
+            }
             byte[] payload = new byte[]
             {
                 0x01, (byte)AntennaPower[0],
@@ -875,6 +1202,12 @@ namespace ZyntraRfidLab
                 0x04, (byte)AntennaPower[3]
             };
             SendTcpFrame(GxProtocol.BuildFrame(0x02, 0x01, payload));
+            if (wasScanning)
+            {
+                Thread.Sleep(60);
+                byte mask = GetEnabledAntennaMask();
+                SendTcpFrame(GxProtocol.BuildFrame(0x02, 0x10, new byte[] { 0x00, 0x00, 0x00, mask, 0x01 }));
+            }
         }
 
         public void SetGpo(int port, bool on)
@@ -893,9 +1226,6 @@ namespace ZyntraRfidLab
         public void RunSmartAutoCalibration(int corridorWidthCm, UsbGxReaderManager usbRef)
         {
             CorridorWidthCm = corridorWidthCm;
-            // Calculate optimal dBm based on corridor width and vertical height differences
-            // Lower antennas (ANT 2 & ANT 4 at 45cm) need ~1-2 dB less to avoid floor bounce;
-            // Upper antennas (ANT 1 & ANT 3 at 115cm) need full penetration for torso/boxes.
             int basePower;
             if (corridorWidthCm <= 120) basePower = 23;
             else if (corridorWidthCm <= 160) basePower = 25;
@@ -903,7 +1233,6 @@ namespace ZyntraRfidLab
             else if (corridorWidthCm <= 300) basePower = 30;
             else basePower = 32;
 
-            // Check if USB reader has nearby background tags to fine-tune threshold
             int staticNoiseFloor = -66;
             if (usbRef != null && usbRef.LatestTag != null)
             {
@@ -929,37 +1258,243 @@ namespace ZyntraRfidLab
 
         private async Task TcpReadLoop(CancellationToken token)
         {
-            byte[] buf = new byte[512];
+            byte[] rxBuf = new byte[4096];
+            byte[] accum = new byte[8192];
+            int accumLen = 0;
+
             while (!token.IsCancellationRequested && Connected)
             {
                 try
                 {
-                    int n = await _netStream.ReadAsync(buf, 0, buf.Length, token);
-                    if (n <= 0) break;
-                    // Parse 0x5A frames from TCP stream
-                    for (int i = 0; i < n - 8; i++)
+                    int n = await _netStream.ReadAsync(rxBuf, 0, rxBuf.Length, token);
+                    if (n <= 0)
                     {
-                        if (buf[i] == 0x5A && buf[i + 1] == 0x00 && buf[i + 2] == 0x01)
+                        Connected = false;
+                        Scanning = false;
+                        StatusText = "BRD-2204 desconectado";
+                        break;
+                    }
+                    if (accumLen + n > accum.Length) accumLen = 0;
+                    Buffer.BlockCopy(rxBuf, 0, accum, accumLen, n);
+                    accumLen += n;
+
+                    int idx = 0;
+                    while (idx <= accumLen - 9)
+                    {
+                        if (accum[idx] == 0x5A && accum[idx + 1] == 0x00 && accum[idx + 2] == 0x01)
                         {
-                            byte cat = buf[i + 3];
-                            byte mid = buf[i + 4];
-                            int len = (buf[i + 5] << 8) | buf[i + 6];
-                            if (cat == 0x11 && (mid == 0x00 || mid == 0x01) && i + 8 < n)
+                            int payLen = (accum[idx + 5] << 8) | accum[idx + 6];
+                            if (payLen < 0 || payLen > 1024)
                             {
-                                // LogAppGpiStart / Over
-                                byte gpiPort = buf[i + 7];
-                                byte level = buf[i + 8];
-                                if (gpiPort == 1) Gpi1Internal = (level == 0); // Active low on BRD-2204
-                                if (gpiPort == 2) Gpi2External = (level == 0);
+                                idx++;
+                                continue;
                             }
-                            break;
+                            int frameLen = 7 + payLen + 2;
+                            if (idx + frameLen > accumLen)
+                                break; // wait for rest of frame
+
+                            ProcessGateGxFrame(accum, idx, frameLen);
+                            idx += frameLen;
                         }
+                        else
+                        {
+                            idx++;
+                        }
+                    }
+
+                    if (idx > 0)
+                    {
+                        int rem = accumLen - idx;
+                        if (rem > 0) Buffer.BlockCopy(accum, idx, accum, 0, rem);
+                        accumLen = rem;
                     }
                 }
                 catch
                 {
+                    if (!token.IsCancellationRequested)
+                    {
+                        Connected = false;
+                        Scanning = false;
+                        StatusText = "Conexión TCP cerrada con BRD-2204";
+                    }
                     break;
                 }
+            }
+        }
+
+        private void ProcessGateGxFrame(byte[] buf, int offset, int frameLen)
+        {
+            byte cat = buf[offset + 3];
+            byte mid = buf[offset + 4];
+            int len = (buf[offset + 5] << 8) | buf[offset + 6];
+            int payStart = offset + 7;
+
+            long nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            if (nowMs - _lastRpsTickMs >= 1000)
+            {
+                ReadsPerSec = _readsInCurrentSec;
+                _readsInCurrentSec = 0;
+                _lastRpsTickMs = nowMs;
+            }
+
+            if (cat == 0x12 && mid == 0x01)
+            {
+                // LogBaseEpcOver -> re-trigger inventory on enabled antennas
+                if (Scanning && Connected)
+                {
+                    Task.Run(() =>
+                    {
+                        Thread.Sleep(35);
+                        if (Scanning && Connected)
+                        {
+                            byte mask = GetEnabledAntennaMask();
+                            SendTcpFrame(GxProtocol.BuildFrame(0x02, 0x10, new byte[] { 0x00, 0x00, 0x00, mask, 0x01 }));
+                        }
+                    });
+                }
+                return;
+            }
+
+            if (cat == 0x01 && mid == 0x00 && len > 6)
+            {
+                int snLen = (buf[payStart] << 8) | buf[payStart + 1];
+                if (snLen > 0 && snLen < 32 && payStart + 2 + snLen <= offset + frameLen)
+                {
+                    SerialNumber = Encoding.ASCII.GetString(buf, payStart + 2, snLen).Trim('\0');
+                }
+            }
+            else if (cat == 0x02 && mid == 0x02 && len >= 2)
+            {
+                for (int p = 0; p + 1 < len; p += 2)
+                {
+                    int ant = buf[payStart + p];
+                    int dbm = buf[payStart + p + 1];
+                    if (ant >= 1 && ant <= 4 && dbm >= 5 && dbm <= 33)
+                        AntennaPower[ant - 1] = dbm;
+                }
+            }
+            else if (cat == 0x11 && (mid == 0x00 || mid == 0x01) && len >= 2)
+            {
+                byte gpiPort = buf[payStart];
+                byte level = buf[payStart + 1];
+                if (gpiPort == 1)
+                {
+                    Gpi1Internal = (level == 0);
+                    if (Gpi1Internal) LastDirection = Gpi2External ? "ENTRADA AL LOCAL" : "DETECTANDO PASO INTERNO (IN1)";
+                }
+                if (gpiPort == 2)
+                {
+                    Gpi2External = (level == 0);
+                    if (Gpi2External) LastDirection = Gpi1Internal ? "SALIDA HACIA CALLE" : "DETECTANDO PASO EXTERNO (IN2)";
+                }
+            }
+            else if (cat == 0x12 && mid == 0x00 && len >= 5)
+            {
+                int epcLen = (buf[payStart] << 8) | buf[payStart + 1];
+                int endPos = offset + 7 + len;
+                if (epcLen <= 0 || payStart + 2 + epcLen + 3 > endPos) return;
+
+                StringBuilder sbEpc = new StringBuilder(epcLen * 2);
+                for (int i = 0; i < epcLen; i++)
+                    sbEpc.Append(buf[payStart + 2 + i].ToString("X2"));
+                string epcHex = sbEpc.ToString();
+
+                int pos = payStart + 2 + epcLen;
+                int antId = buf[pos + 2];
+                if (antId < 1 || antId > 4) antId = 1;
+                pos += 3;
+
+                int rssiRaw = 18;
+                string tidHex = "";
+                double freqMhz = 915.25;
+
+                while (pos < endPos)
+                {
+                    byte pid = buf[pos++];
+                    if (pid == 0x01 && pos < endPos)
+                    {
+                        rssiRaw = buf[pos++];
+                    }
+                    else if (pid == 0x02 && pos < endPos)
+                    {
+                        pos++;
+                    }
+                    else if (pid == 0x03 && pos + 1 < endPos)
+                    {
+                        int tidLen = (buf[pos] << 8) | buf[pos + 1];
+                        pos += 2;
+                        StringBuilder sbTid = new StringBuilder(tidLen * 2);
+                        for (int k = 0; k < tidLen && (pos + k) < endPos; k++)
+                            sbTid.Append(buf[pos + k].ToString("X2"));
+                        tidHex = sbTid.ToString();
+                        pos += tidLen;
+                    }
+                    else if (pid == 0x06 && pos + 1 < endPos)
+                    {
+                        pos += 2;
+                    }
+                    else if (pid == 0x07 && pos < endPos)
+                    {
+                        pos += 1;
+                    }
+                    else if (pid == 0x08 && pos + 3 < endPos)
+                    {
+                        int freqKhz = (buf[pos] << 24) | (buf[pos + 1] << 16) | (buf[pos + 2] << 8) | buf[pos + 3];
+                        if (freqKhz > 800000 && freqKhz < 1000000)
+                            freqMhz = Math.Round(freqKhz / 1000.0, 2);
+                        pos += 4;
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+
+                int rssiDbm = -85 + (int)Math.Round((rssiRaw / 35.0) * 52.0);
+                if (rssiDbm > -25) rssiDbm = -25;
+                if (rssiDbm < -85) rssiDbm = -85;
+
+                TotalReads++;
+                _readsInCurrentSec++;
+                AntennaReadCounts[antId - 1]++;
+                AntennaLastRssi[antId - 1] = rssiDbm;
+
+                string key = string.IsNullOrEmpty(tidHex) ? epcHex : (epcHex + "|" + tidHex);
+                TagReadRecord rec = GateTags.AddOrUpdate(key,
+                    k => new TagReadRecord
+                    {
+                        EpcHex = epcHex,
+                        EpcAscii = GxProtocol.HexToCleanAscii(epcHex),
+                        TidHex = tidHex,
+                        ChipModel = GxProtocol.DecodeChipFromTid(tidHex),
+                        Antenna = antId,
+                        RssiRaw = rssiRaw,
+                        RssiDbm = rssiDbm,
+                        FreqMhz = freqMhz,
+                        ReadCount = 1,
+                        FirstSeenMs = nowMs,
+                        LastSeenMs = nowMs,
+                        SourceDevice = "BRD-2204"
+                    },
+                    (k, existing) =>
+                    {
+                        existing.EpcHex = epcHex;
+                        existing.EpcAscii = GxProtocol.HexToCleanAscii(epcHex);
+                        if (!string.IsNullOrEmpty(tidHex))
+                        {
+                            existing.TidHex = tidHex;
+                            existing.ChipModel = GxProtocol.DecodeChipFromTid(tidHex);
+                        }
+                        existing.Antenna = antId;
+                        existing.RssiRaw = rssiRaw;
+                        existing.RssiDbm = rssiDbm;
+                        existing.FreqMhz = freqMhz;
+                        existing.ReadCount++;
+                        existing.LastSeenMs = nowMs;
+                        return existing;
+                    });
+
+                LatestTag = rec;
             }
         }
     }
@@ -1083,7 +1618,11 @@ namespace ZyntraRfidLab
             {
                 AutoUpdater.CleanupOldBinary();
                 StartHttpServer();
-                Task.Run(() => AutoDetectUsbDevices());
+                Task.Run(() =>
+                {
+                    Gate.CheckUsbEthernetAdapter();
+                    AutoDetectUsbDevices();
+                });
                 StartUsbWatchdog();
                 Task.Run(() =>
                 {
@@ -1138,11 +1677,13 @@ namespace ZyntraRfidLab
         {
             Task.Run(() =>
             {
+                int tick = 0;
                 while (_running)
                 {
                     try
                     {
                         Thread.Sleep(1500);
+                        tick++;
                         if (Dc06.Connected && !UsbGxReaderManager.IsDevicePathPresent(Dc06.DevicePath))
                         {
                             Dc06.HandlePhysicalDisconnect();
@@ -1156,13 +1697,20 @@ namespace ZyntraRfidLab
                         if (!Dc06.Connected || !Dc01.Connected)
                         {
                             var paths = UsbGxReaderManager.FindAllGxHidPaths();
-                            if (!Dc06.Connected && paths.Count >= 1)
+                            if ((!Dc06.Connected && !Dc01.Connected && paths.Count >= 1) ||
+                                ((!Dc06.Connected || !Dc01.Connected) && paths.Count >= 2))
                             {
                                 AutoDetectUsbDevices();
                             }
-                            else if (!Dc01.Connected && paths.Count >= 2)
+                        }
+                        if (tick % 3 == 0)
+                        {
+                            Gate.CheckUsbEthernetAdapter();
+                            if (!Gate.Connected && Gate.UsbLanConnected && Gate.UsbLanReady)
                             {
-                                AutoDetectUsbDevices();
+                                string gMsg;
+                                if (Gate.AutoDiscoverAndConnect(out gMsg))
+                                    UpdateWindowLabel();
                             }
                         }
                     }
@@ -1197,6 +1745,7 @@ namespace ZyntraRfidLab
             {
                 { "2BC972ACC000", "DC01" },
                 { "BRDC600002328A000114", "DC01" },
+                { "2BC978ECC000", "DC06" },
                 { "BRDC600002328A000282", "DC06" }
             };
             try
@@ -1280,7 +1829,7 @@ namespace ZyntraRfidLab
                     if (Dc06.PowerDbm <= 0) Dc06.PowerDbm = 27;
                     if (Dc06.Connect(pathForDc06))
                     {
-                        Thread.Sleep(300);
+                        Thread.Sleep(260);
                         string snRole = DetermineRoleForPath(Dc06.SerialNumber, roleMap);
                         if (snRole == "DC01" && !Dc01.Connected)
                         {
@@ -1356,22 +1905,25 @@ namespace ZyntraRfidLab
                 return;
             }
             _lblStatus.Text = string.Format(
-                "• BRD-DC06 (USB): {0} ({1})\n• BRD-DC01 (USB): {2}\n• Consola Web: http://localhost:{3}",
+                "• BRD-DC06 (USB): {0} ({1})\n• BRD-DC01 (Pad): {2} | • BRD-2204 (Red): {3}\n• Consola Web: http://localhost:{4}",
                 Dc06.Connected ? "CONECTADA" : "No detectada",
-                Dc06.Scanning ? "Leyendo en vivo a " + Dc06.PowerDbm + " dBm" : "En espera",
-                Dc01.Connected ? "CONECTADA" : "Esperando conexión USB",
+                Dc06.Scanning ? "Leyendo a " + Dc06.PowerDbm + " dBm" : "En espera",
+                Dc01.Connected ? "CONECTADO (" + Dc01.PowerDbm + " dBm)" : "En espera",
+                Gate.Connected ? "CONECTADO (" + Gate.ReaderIp + ")" : (Gate.UsbLanConnected ? "Cable USB-Red Activo" : "En espera"),
                 _port
             );
             if (_trayIcon != null)
             {
-                if (Dc06.Connected && Dc01.Connected)
+                if (Gate.Connected)
+                    _trayIcon.Text = "Zyntra RFID Lab — Arco BRD-2204 Conectado";
+                else if (Dc06.Connected && Dc01.Connected)
                     _trayIcon.Text = "Zyntra RFID Lab — DC06 + PAD DC01";
                 else if (Dc06.Connected)
                     _trayIcon.Text = "Zyntra RFID Lab — BRD-DC06 (" + Dc06.PowerDbm + " dBm)";
                 else if (Dc01.Connected)
                     _trayIcon.Text = "Zyntra RFID Lab — PAD DC01 (" + Dc01.PowerDbm + " dBm)";
                 else
-                    _trayIcon.Text = "Zyntra RFID Lab — Esperando Antena USB";
+                    _trayIcon.Text = "Zyntra RFID Lab — Activo";
             }
         }
 
@@ -1600,12 +2152,49 @@ namespace ZyntraRfidLab
                         SendTcpJson(stream, BuildStateJson());
                         return;
                     }
+                    if (path == "/api/usb/swap" && method == "POST")
+                    {
+                        SwapUsbRoles();
+                        SendTcpJson(stream, BuildStateJson());
+                        return;
+                    }
+                    if (path == "/api/gate/setup-usb-lan" && method == "POST")
+                    {
+                        string msg;
+                        bool ok = Gate.ConfigureUsbEthernetSubnet(out msg);
+                        UpdateWindowLabel();
+                        SendTcpJson(stream, "{\"ok\":" + (ok ? "true" : "false") + ",\"message\":\"" + EscapeJson(msg) + "\"}");
+                        return;
+                    }
+                    if (path == "/api/gate/autodiscover" && method == "POST")
+                    {
+                        string msg;
+                        bool ok = Gate.AutoDiscoverAndConnect(out msg);
+                        UpdateWindowLabel();
+                        SendTcpJson(stream, "{\"ok\":" + (ok ? "true" : "false") + ",\"message\":\"" + EscapeJson(msg) + "\"}");
+                        return;
+                    }
+                    if (path == "/api/gate/toggle" && method == "POST")
+                    {
+                        if (Gate.Scanning) Gate.StopInventory();
+                        else Gate.StartInventory();
+                        UpdateWindowLabel();
+                        SendTcpJson(stream, BuildStateJson());
+                        return;
+                    }
+                    if (path == "/api/gate/clear" && method == "POST")
+                    {
+                        Gate.ClearTags();
+                        SendTcpJson(stream, BuildStateJson());
+                        return;
+                    }
                     if (path == "/api/gate/connect" && method == "POST")
                     {
                         string ip = ExtractJsonStr(body, "ip") ?? "192.168.1.116";
                         int port = ExtractJsonInt(body, "port", 9090);
                         string msg;
                         bool ok = Gate.ConnectTcp(ip, port, out msg);
+                        UpdateWindowLabel();
                         SendTcpJson(stream, "{\"ok\":" + (ok ? "true" : "false") + ",\"message\":\"" + EscapeJson(msg) + "\"}");
                         return;
                     }
@@ -1643,12 +2232,6 @@ namespace ZyntraRfidLab
                         int port = ExtractJsonInt(body, "port", 1);
                         bool state = body.Contains("\"on\":true");
                         Gate.SetGpo(port, state);
-                        SendTcpJson(stream, BuildStateJson());
-                        return;
-                    }
-                    if (path == "/api/usb/swap" && method == "POST")
-                    {
-                        SwapUsbRoles();
                         SendTcpJson(stream, BuildStateJson());
                         return;
                     }
@@ -1732,20 +2315,40 @@ namespace ZyntraRfidLab
             sb.Append("\"gate\":{");
             sb.Append("\"ip\":\"").Append(EscapeJson(Gate.ReaderIp)).Append("\",");
             sb.Append("\"port\":").Append(Gate.ReaderPort).Append(",");
+            sb.Append("\"serial\":\"").Append(EscapeJson(Gate.SerialNumber)).Append("\",");
             sb.Append("\"connected\":").Append(Gate.Connected ? "true" : "false").Append(",");
             sb.Append("\"scanning\":").Append(Gate.Scanning ? "true" : "false").Append(",");
             sb.Append("\"status\":\"").Append(EscapeJson(Gate.StatusText)).Append("\",");
+            sb.Append("\"usbLanConnected\":").Append(Gate.UsbLanConnected ? "true" : "false").Append(",");
+            sb.Append("\"usbLanReady\":").Append(Gate.UsbLanReady ? "true" : "false").Append(",");
+            sb.Append("\"usbLanDesc\":\"").Append(EscapeJson(Gate.UsbLanDescription)).Append("\",");
+            sb.Append("\"usbLanIp\":\"").Append(EscapeJson(Gate.UsbLanIp)).Append("\",");
+            sb.Append("\"totalReads\":").Append(Gate.TotalReads).Append(",");
+            sb.Append("\"readsPerSec\":").Append(Gate.ReadsPerSec).Append(",");
+            sb.Append("\"lastDirection\":\"").Append(EscapeJson(Gate.LastDirection)).Append("\",");
             sb.Append("\"rssiThreshold\":").Append(Gate.RssiThresholdDbm).Append(",");
             sb.Append("\"corridorWidthCm\":").Append(Gate.CorridorWidthCm).Append(",");
             sb.Append("\"calibrationReport\":\"").Append(EscapeJson(Gate.LastCalibrationReport)).Append("\",");
             sb.Append("\"powers\":[").Append(Gate.AntennaPower[0]).Append(",").Append(Gate.AntennaPower[1]).Append(",").Append(Gate.AntennaPower[2]).Append(",").Append(Gate.AntennaPower[3]).Append("],");
             sb.Append("\"enabled\":[").Append(Gate.AntennaEnabled[0] ? "true" : "false").Append(",").Append(Gate.AntennaEnabled[1] ? "true" : "false").Append(",").Append(Gate.AntennaEnabled[2] ? "true" : "false").Append(",").Append(Gate.AntennaEnabled[3] ? "true" : "false").Append("],");
+            sb.Append("\"antCounts\":[").Append(Gate.AntennaReadCounts[0]).Append(",").Append(Gate.AntennaReadCounts[1]).Append(",").Append(Gate.AntennaReadCounts[2]).Append(",").Append(Gate.AntennaReadCounts[3]).Append("],");
+            sb.Append("\"antRssi\":[").Append(Gate.AntennaLastRssi[0]).Append(",").Append(Gate.AntennaLastRssi[1]).Append(",").Append(Gate.AntennaLastRssi[2]).Append(",").Append(Gate.AntennaLastRssi[3]).Append("],");
             sb.Append("\"gpi1\":").Append(Gate.Gpi1Internal ? "true" : "false").Append(",");
             sb.Append("\"gpi2\":").Append(Gate.Gpi2External ? "true" : "false").Append(",");
             sb.Append("\"gpo1\":").Append(Gate.Gpo1GreenLed ? "true" : "false").Append(",");
             sb.Append("\"gpo2\":").Append(Gate.Gpo2RedLed ? "true" : "false").Append(",");
             sb.Append("\"gpo3\":").Append(Gate.Gpo3Siren ? "true" : "false").Append(",");
-            sb.Append("\"gpo4\":").Append(Gate.Gpo4Aux ? "true" : "false");
+            sb.Append("\"gpo4\":").Append(Gate.Gpo4Aux ? "true" : "false").Append(",");
+            sb.Append("\"latestTag\":").Append(Gate.LatestTag != null ? SerializeTag(Gate.LatestTag) : "null").Append(",");
+            sb.Append("\"tags\":[");
+            bool firstG = true;
+            foreach (var kv in Gate.GateTags)
+            {
+                if (!firstG) sb.Append(",");
+                sb.Append(SerializeTag(kv.Value));
+                firstG = false;
+            }
+            sb.Append("]");
             sb.Append("}");
             sb.Append("}");
             return sb.ToString();

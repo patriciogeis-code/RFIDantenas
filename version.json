@@ -1,5 +1,5 @@
 {
-  "version": "1.2.0",
-  "repo": "patriciogeis-code/RFIDantenas",
-  "notes": "Versión 1.2.0 — Bandeja del sistema junto al reloj, Watchdog USB Hot-Plug (auto-reconexión al desenchufar/enchufar antena) y dibujos interactivos de calibración."
+  "version": "1.2.2",
+  "releasedAt": "2026-11-16T22:00:00Z",
+  "notes": "Auto-identificación de Pad BRD-DC01 vs Antena BRD-DC06, optimización de respuesta rápida Baseband (Session 0 Dual Target) y soporte directo de cable USB-Red para el lector de 4 antenas BRD-2204."
 }

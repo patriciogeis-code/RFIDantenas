@@ -329,7 +329,8 @@
     <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
       <button class="btn btn-dark" onclick="toggleWebAudio()" id="webAudioBtn">🔊 Beep: ON</button>
       <button class="btn btn-dark" onclick="reconnectUsb()">🔄 USB</button>
-      <button class="btn btn-primary" onclick="checkAutoUpdate()" id="btnAutoUpdate">🚀 v1.2.0 (Auto-Update)</button>
+      <button class="btn btn-dark" onclick="swapUsbRoles()" title="Intercambiar cuál USB es Antena DC06 y cuál es Pad DC01">⇄ Antena/Pad</button>
+      <button class="btn btn-primary" onclick="checkAutoUpdate()" id="btnAutoUpdate">🚀 v1.2.2 (Auto-Update)</button>
     </div>
   </header>
 
@@ -899,16 +900,75 @@
 
           <div class="card">
             <div class="card-header">
-              <div class="card-title">🌐 Conexión del Lector BRD-2204 al Router (RJ-45)</div>
+              <div class="card-title">🌐 Conexión del Lector BRD-2204 (Cable USB-Red / RJ-45)</div>
+              <span class="badge badge-amber" id="gateUsbLanBadge">Detectando Adaptador...</span>
             </div>
-            <div style="display:grid; grid-template-columns: 1fr 90px; gap:8px; margin-bottom:10px;">
+
+            <div id="gateUsbLanInfo" style="font-size:12px; background:#090d16; padding:10px; border-radius:8px; border:1px solid #1e293b; color:#cbd5e1; margin-bottom:10px; line-height:1.45;">
+              Verificando adaptador USB-Ethernet y cable de red hacia el BRD-2204...
+            </div>
+
+            <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:10px;">
+              <button class="btn btn-amber" id="btnSetupUsbLan" style="width:100%;" onclick="setupUsbLanAdapter()">
+                ⚡ Paso 1: Configurar IP del Cable USB-Red (192.168.1.200)
+              </button>
+              <button class="btn btn-emerald" style="width:100%;" onclick="autoDiscoverGate()">
+                🔍 Paso 2: Auto-Detectar y Conectar Lector BRD-2204
+              </button>
+            </div>
+
+            <div style="display:grid; grid-template-columns: 1fr 85px auto; gap:8px; margin-bottom:8px;">
               <input type="text" id="gateIpInput" class="input-text" value="192.168.1.116" placeholder="IP del BRD-2204" />
               <input type="number" id="gatePortInput" class="input-text" value="9090" placeholder="Puerto" />
+              <button class="btn btn-primary" onclick="connectGateTcp()">🔌 Conectar</button>
             </div>
-            <button class="btn btn-primary" style="width:100%;" onclick="connectGateTcp()">
-              🔌 Conectar al Lector BRD-2204 en Red
-            </button>
-            <div id="gateConnStatus" style="font-size:12px; color:var(--muted); margin-top:8px;"></div>
+            <div id="gateConnStatus" style="font-size:12px; color:var(--muted); margin-top:4px;"></div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">🏷️ Lectura en Vivo del Arco (4 Antenas)</div>
+              <span class="badge badge-sky" id="gate-rpsBadge">0 lecturas/s</span>
+            </div>
+            <div style="display:flex; gap:8px; margin-bottom:10px;">
+              <button class="btn btn-emerald" id="gate-toggleBtn" style="flex:1;" onclick="toggleGateScan()">
+                ▶ INICIAR LECTURA 4 ANTENAS
+              </button>
+              <button class="btn btn-dark" onclick="clearGateTags()">🧹 Limpiar</button>
+            </div>
+            <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:6px; margin-bottom:10px; text-align:center; font-size:11px;">
+              <div style="background:#090d16; padding:6px; border-radius:6px; border:1px solid #1e293b;">
+                <div style="color:var(--sky); font-weight:700;">ANT 1</div>
+                <div id="gateAntCnt1" style="font-weight:800; color:#fff;">0</div>
+              </div>
+              <div style="background:#090d16; padding:6px; border-radius:6px; border:1px solid #1e293b;">
+                <div style="color:var(--sky); font-weight:700;">ANT 2</div>
+                <div id="gateAntCnt2" style="font-weight:800; color:#fff;">0</div>
+              </div>
+              <div style="background:#090d16; padding:6px; border-radius:6px; border:1px solid #1e293b;">
+                <div style="color:var(--sky); font-weight:700;">ANT 3</div>
+                <div id="gateAntCnt3" style="font-weight:800; color:#fff;">0</div>
+              </div>
+              <div style="background:#090d16; padding:6px; border-radius:6px; border:1px solid #1e293b;">
+                <div style="color:var(--sky); font-weight:700;">ANT 4</div>
+                <div id="gateAntCnt4" style="font-weight:800; color:#fff;">0</div>
+              </div>
+            </div>
+            <div class="table-wrap" style="max-height:170px;">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Código ASCII</th>
+                    <th>Antena</th>
+                    <th>RSSI</th>
+                    <th>Lecturas</th>
+                  </tr>
+                </thead>
+                <tbody id="gate-tableBody">
+                  <tr><td colspan="4" style="text-align:center; color:var(--muted);">Conecta el lector BRD-2204 para ver lecturas por antena...</td></tr>
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       </div>
@@ -1118,6 +1178,42 @@
       renderState(st);
     }
 
+    async function swapUsbRoles() {
+      const st = await apiPost('/api/usb/swap', {});
+      playBrowserBeep(1500, 80);
+      renderState(st);
+    }
+
+    async function setupUsbLanAdapter() {
+      const stBox = document.getElementById('gateConnStatus');
+      stBox.style.color = '#fbbf24';
+      stBox.textContent = '⏳ Acepta el permiso de Administrador (Sí) en la pantalla de la notebook para asignar 192.168.1.200 al adaptador USB-Red...';
+      const res = await apiPost('/api/gate/setup-usb-lan', {});
+      stBox.style.color = res.ok ? '#34d399' : '#fb7185';
+      stBox.textContent = res.message;
+      if (res.ok) playBrowserBeep(1650, 120);
+    }
+
+    async function autoDiscoverGate() {
+      const stBox = document.getElementById('gateConnStatus');
+      stBox.style.color = '#38bdf8';
+      stBox.textContent = '🔍 Buscando lector BRD-2204 en cable USB-Red (192.168.1.116 / .168 / puertos 9090, 8160)...';
+      const res = await apiPost('/api/gate/autodiscover', {});
+      stBox.style.color = res.ok ? '#34d399' : '#fbbf24';
+      stBox.textContent = res.message;
+      if (res.ok) playBrowserBeep(1700, 120);
+    }
+
+    async function toggleGateScan() {
+      const st = await apiPost('/api/gate/toggle', {});
+      renderState(st);
+    }
+
+    async function clearGateTags() {
+      const st = await apiPost('/api/gate/clear', {});
+      renderState(st);
+    }
+
     async function checkAutoUpdate() {
       const btn = document.getElementById('btnAutoUpdate');
       btn.textContent = '⏳ Buscando...';
@@ -1296,8 +1392,91 @@
         `).join('');
       }
 
+      if (st.dc01) {
+        const d1 = st.dc01;
+        document.getElementById('dot-dc01').className = 'status-dot ' + (d1.connected ? 'dot-online' : 'dot-standby');
+        document.getElementById('dc01-statusBadge').textContent = d1.connected ? (d1.scanning ? `PAD CONECTADO (${d1.powerDbm} dBm)` : 'PAD EN ESPERA') : 'Esperando USB-C';
+        document.getElementById('dc01-statusBadge').className = 'badge ' + (d1.connected ? (d1.scanning ? 'badge-emerald' : 'badge-amber') : 'badge-rose');
+        const tBtn1 = document.getElementById('dc01-toggleBtn');
+        if (d1.scanning) {
+          tBtn1.className = 'btn btn-rose';
+          tBtn1.textContent = '⏹ DETENER LECTURA EN PAD BRD-DC01';
+        } else {
+          tBtn1.className = 'btn btn-primary';
+          tBtn1.textContent = '▶ INICIAR LECTURA EN PAD BRD-DC01';
+        }
+        const tb1 = document.getElementById('dc01-tableBody');
+        if (d1.tags && d1.tags.length > 0) {
+          tb1.innerHTML = d1.tags.map(t => `
+            <tr>
+              <td style="font-weight:800; color:#34d399;">${t.epcAscii || '—'}</td>
+              <td>${t.epcHex}</td>
+              <td>${t.rssiDbm} dBm</td>
+              <td><strong>${t.count}</strong></td>
+            </tr>
+          `).join('');
+        }
+      }
+
       if (st.gate) {
         const g = st.gate;
+        document.getElementById('dot-gate').className = 'status-dot ' + (g.connected ? 'dot-online' : (g.usbLanConnected ? 'dot-standby' : 'dot-offline'));
+        document.getElementById('gate-connBadge').textContent = g.connected ? `CONECTADO (${g.ip}:${g.port})` : (g.usbLanConnected ? 'Cable USB-Red Detectado' : 'Esperando RJ-45');
+        document.getElementById('gate-connBadge').className = 'badge ' + (g.connected ? 'badge-emerald' : 'badge-amber');
+
+        const lanBadge = document.getElementById('gateUsbLanBadge');
+        const lanInfo = document.getElementById('gateUsbLanInfo');
+        const btnSetup = document.getElementById('btnSetupUsbLan');
+        if (g.connected) {
+          lanBadge.className = 'badge badge-emerald';
+          lanBadge.textContent = 'BRD-2204 Online';
+          lanInfo.innerHTML = `✅ <strong>BRD-2204 Conectado:</strong> ${g.ip}:${g.port} | Serie: <strong>${g.serial || 'BRD-2204'}</strong>`;
+          btnSetup.style.display = 'none';
+        } else if (g.usbLanConnected && !g.usbLanReady) {
+          lanBadge.className = 'badge badge-amber';
+          lanBadge.textContent = 'Falta IP 192.168.1.200';
+          lanInfo.innerHTML = `⚠️ <strong>Adaptador detectado:</strong> ${g.usbLanDesc} (IP actual: <code>${g.usbLanIp}</code>).<br/>Como está conectado directo por cable sin router, toca el <strong>Paso 1</strong> y acepta el permiso en la notebook para asignarle <code>192.168.1.200</code> sin cortar tu Wi-Fi.`;
+          btnSetup.style.display = 'block';
+        } else if (g.usbLanConnected && g.usbLanReady) {
+          lanBadge.className = 'badge badge-emerald';
+          lanBadge.textContent = 'Subred 192.168.1.x Lista';
+          lanInfo.innerHTML = `✅ <strong>Adaptador listo:</strong> ${g.usbLanDesc} (<code>${g.usbLanIp}</code>). Toca el <strong>Paso 2</strong> para buscar y conectar el lector BRD-2204.`;
+          btnSetup.style.display = 'none';
+        } else {
+          lanBadge.className = 'badge badge-rose';
+          lanBadge.textContent = 'Sin Enlace RJ-45';
+          lanInfo.innerHTML = `🔌 Conecta el cable de red RJ-45 al lector <strong>BRD-2204</strong> y verifica que su fuente de <strong>12V DC</strong> esté enchufada.`;
+          btnSetup.style.display = 'block';
+        }
+
+        document.getElementById('gate-rpsBadge').textContent = (g.readsPerSec || 0) + ' lecturas/s';
+        const gToggle = document.getElementById('gate-toggleBtn');
+        if (g.scanning) {
+          gToggle.className = 'btn btn-rose';
+          gToggle.textContent = '⏹ DETENER LECTURA 4 ANTENAS';
+        } else {
+          gToggle.className = 'btn btn-emerald';
+          gToggle.textContent = '▶ INICIAR LECTURA 4 ANTENAS';
+        }
+
+        if (g.antCounts) {
+          for (let a = 1; a <= 4; a++) {
+            document.getElementById('gateAntCnt' + a).textContent = g.antCounts[a - 1] + ' leídas';
+          }
+        }
+
+        const tbG = document.getElementById('gate-tableBody');
+        if (g.tags && g.tags.length > 0) {
+          tbG.innerHTML = g.tags.map(t => `
+            <tr>
+              <td style="font-weight:800; color:#38bdf8;">${t.epcAscii || t.epcHex}</td>
+              <td><span class="badge badge-sky">ANT #${t.antenna}</span></td>
+              <td>${t.rssiDbm} dBm</td>
+              <td><strong>${t.count}</strong></td>
+            </tr>
+          `).join('');
+        }
+
         document.getElementById('gateCalibReport').textContent = g.calibrationReport;
         for (let i = 1; i <= 4; i++) {
           const p = g.powers[i - 1];
