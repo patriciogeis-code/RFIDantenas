@@ -301,6 +301,7 @@ namespace ZyntraRfidLab
         private readonly object _writeLock = new object();
         private int _readsInCurrentSec = 0;
         private long _lastRpsTickMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        public long LastRxOrPollMs = 0;
 
         public ConcurrentDictionary<string, TagReadRecord> Tags = new ConcurrentDictionary<string, TagReadRecord>();
         public TagReadRecord LatestTag = null;
@@ -457,8 +458,9 @@ namespace ZyntraRfidLab
             if (!Connected) return;
 
             // Start continuous inventory on Antenna 1 (pure EPC mode for maximum distance and speed)
-            SendFrame(GxProtocol.BuildFrame(0x02, 0x10, new byte[] { 0x00, 0x00, 0x00, 0x01, 0x01 }));
+            LastRxOrPollMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             Scanning = true;
+            SendFrame(GxProtocol.BuildFrame(0x02, 0x10, new byte[] { 0x00, 0x00, 0x00, 0x01, 0x01 }));
             LastStatusMessage = "Escaneando en vivo (" + PowerDbm + " dBm)";
         }
 
@@ -625,11 +627,29 @@ namespace ZyntraRfidLab
             int payStart = offset + 7;
 
             long nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            LastRxOrPollMs = nowMs;
             if (nowMs - _lastRpsTickMs >= 1000)
             {
                 ReadsPerSec = _readsInCurrentSec;
                 _readsInCurrentSec = 0;
                 _lastRpsTickMs = nowMs;
+            }
+
+            if (cat == 0x12 && mid == 0x01)
+            {
+                // LogBaseEpcOver: BRD-DC06 finished a scan cycle; immediately re-trigger if Scanning is active!
+                if (Scanning && Connected)
+                {
+                    Task.Run(() =>
+                    {
+                        Thread.Sleep(35);
+                        if (Scanning && Connected)
+                        {
+                            SendFrame(GxProtocol.BuildFrame(0x02, 0x10, new byte[] { 0x00, 0x00, 0x00, 0x01, 0x01 }));
+                        }
+                    });
+                }
+                return;
             }
 
             if (cat == 0x01 && mid == 0x00 && len > 6)
@@ -1150,6 +1170,18 @@ namespace ZyntraRfidLab
                             {
                                 AutoDetectUsbDevices();
                             }
+                        }
+                        // Keep-alive inventory burst if BRD-DC06 auto-dormancy paused it
+                        long nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                        if (Dc06.Connected && Dc06.Scanning && (nowMs - Dc06.LastRxOrPollMs > 1400))
+                        {
+                            Dc06.LastRxOrPollMs = nowMs;
+                            Dc06.SendFrame(GxProtocol.BuildFrame(0x02, 0x10, new byte[] { 0x00, 0x00, 0x00, 0x01, 0x01 }));
+                        }
+                        if (Dc01.Connected && Dc01.Scanning && (nowMs - Dc01.LastRxOrPollMs > 1400))
+                        {
+                            Dc01.LastRxOrPollMs = nowMs;
+                            Dc01.SendFrame(GxProtocol.BuildFrame(0x02, 0x10, new byte[] { 0x00, 0x00, 0x00, 0x01, 0x01 }));
                         }
                     }
                     catch { }
