@@ -1184,6 +1184,65 @@ namespace ZyntraRfidLab
             }
         }
 
+        private static string GetUsbRoleConfigPath()
+        {
+            string dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ZyntraRfidLab");
+            Directory.CreateDirectory(dir);
+            return Path.Combine(dir, "usb_roles.txt");
+        }
+
+        private static Dictionary<string, string> LoadUsbRoleMap()
+        {
+            var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                { "2BC972ACC000", "DC01" },
+                { "BRDC600002328A000114", "DC01" },
+                { "BRDC600002328A000282", "DC06" }
+            };
+            try
+            {
+                string cfg = GetUsbRoleConfigPath();
+                if (File.Exists(cfg))
+                {
+                    foreach (string line in File.ReadAllLines(cfg))
+                    {
+                        string[] parts = line.Split('=');
+                        if (parts.Length == 2 && !string.IsNullOrWhiteSpace(parts[0]))
+                            map[parts[0].Trim()] = parts[1].Trim().ToUpperInvariant();
+                    }
+                }
+            }
+            catch { }
+            return map;
+        }
+
+        private static void SaveUsbRoleMapping(string key, string role)
+        {
+            if (string.IsNullOrWhiteSpace(key)) return;
+            try
+            {
+                var map = LoadUsbRoleMap();
+                map[key.Trim()] = role.Trim().ToUpperInvariant();
+                var lines = new List<string>();
+                foreach (var kv in map) lines.Add(kv.Key + "=" + kv.Value);
+                File.WriteAllLines(GetUsbRoleConfigPath(), lines.ToArray());
+            }
+            catch { }
+        }
+
+        private static string DetermineRoleForPath(string devPath, Dictionary<string, string> roleMap)
+        {
+            if (!string.IsNullOrEmpty(devPath))
+            {
+                foreach (var kv in roleMap)
+                {
+                    if (devPath.IndexOf(kv.Key, StringComparison.OrdinalIgnoreCase) >= 0)
+                        return kv.Value;
+                }
+            }
+            return "";
+        }
+
         private void AutoDetectUsbDevices()
         {
             lock (_usbScanLock)
@@ -1196,25 +1255,96 @@ namespace ZyntraRfidLab
                     UpdateWindowLabel();
                     return;
                 }
-                if (paths.Count >= 1)
+
+                var roleMap = LoadUsbRoleMap();
+                string pathForDc06 = null;
+                string pathForDc01 = null;
+                var unassigned = new List<string>();
+
+                foreach (string p in paths)
                 {
-                    if (!Dc06.Connected || !UsbGxReaderManager.IsDevicePathPresent(Dc06.DevicePath))
+                    string mappedRole = DetermineRoleForPath(p, roleMap);
+                    if (mappedRole == "DC01" && pathForDc01 == null) pathForDc01 = p;
+                    else if (mappedRole == "DC06" && pathForDc06 == null) pathForDc06 = p;
+                    else unassigned.Add(p);
+                }
+
+                foreach (string p in unassigned)
+                {
+                    if (pathForDc06 == null) pathForDc06 = p;
+                    else if (pathForDc01 == null) pathForDc01 = p;
+                }
+
+                if (pathForDc06 != null && (!Dc06.Connected || !string.Equals(Dc06.DevicePath, pathForDc06, StringComparison.OrdinalIgnoreCase)))
+                {
+                    if (Dc06.PowerDbm <= 0) Dc06.PowerDbm = 27;
+                    if (Dc06.Connect(pathForDc06))
                     {
-                        if (Dc06.PowerDbm <= 0) Dc06.PowerDbm = 27;
-                        if (Dc06.Connect(paths[0]))
+                        Thread.Sleep(300);
+                        string snRole = DetermineRoleForPath(Dc06.SerialNumber, roleMap);
+                        if (snRole == "DC01" && !Dc01.Connected)
+                        {
+                            SaveUsbRoleMapping(pathForDc06, "DC01");
+                            Dc06.Disconnect();
+                            Dc06.SerialNumber = "BRD-DC06 (Esperando USB)";
+                            if (Dc01.PowerDbm <= 0) Dc01.PowerDbm = 16;
+                            if (Dc01.Connect(pathForDc06))
+                            {
+                                Dc01.StartInventory();
+                            }
+                        }
+                        else
                         {
                             Dc06.StartInventory();
                         }
                     }
                 }
-                if (paths.Count >= 2)
+                else if (pathForDc06 == null && Dc06.Connected)
                 {
-                    if (!Dc01.Connected || !UsbGxReaderManager.IsDevicePathPresent(Dc01.DevicePath))
+                    Dc06.Disconnect();
+                    Dc06.SerialNumber = "BRD-DC06 (Esperando USB)";
+                }
+
+                if (pathForDc01 != null && (!Dc01.Connected || !string.Equals(Dc01.DevicePath, pathForDc01, StringComparison.OrdinalIgnoreCase)))
+                {
+                    if (Dc01.PowerDbm <= 0) Dc01.PowerDbm = 16;
+                    if (Dc01.Connect(pathForDc01))
                     {
-                        Dc01.Connect(paths[1]);
+                        Dc01.StartInventory();
                     }
                 }
+                else if (pathForDc01 == null && Dc01.Connected)
+                {
+                    Dc01.Disconnect();
+                    Dc01.SerialNumber = "BRD-DC01 (Esperando USB)";
+                }
+
                 UpdateWindowLabel();
+            }
+        }
+
+        private void SwapUsbRoles()
+        {
+            lock (_usbScanLock)
+            {
+                if (Dc06.Connected && !Dc01.Connected && !string.IsNullOrEmpty(Dc06.DevicePath))
+                {
+                    SaveUsbRoleMapping(Dc06.DevicePath, "DC01");
+                    if (!string.IsNullOrEmpty(Dc06.SerialNumber)) SaveUsbRoleMapping(Dc06.SerialNumber, "DC01");
+                }
+                else if (Dc01.Connected && !Dc06.Connected && !string.IsNullOrEmpty(Dc01.DevicePath))
+                {
+                    SaveUsbRoleMapping(Dc01.DevicePath, "DC06");
+                    if (!string.IsNullOrEmpty(Dc01.SerialNumber)) SaveUsbRoleMapping(Dc01.SerialNumber, "DC06");
+                }
+                else if (Dc06.Connected && Dc01.Connected)
+                {
+                    string p6 = Dc06.DevicePath;
+                    string p1 = Dc01.DevicePath;
+                    SaveUsbRoleMapping(p6, "DC01");
+                    SaveUsbRoleMapping(p1, "DC06");
+                }
+                ForceReconnectUsbDevices();
             }
         }
 
@@ -1234,9 +1364,14 @@ namespace ZyntraRfidLab
             );
             if (_trayIcon != null)
             {
-                _trayIcon.Text = Dc06.Connected
-                    ? ("Zyntra RFID Lab — BRD-DC06 (" + Dc06.PowerDbm + " dBm)")
-                    : "Zyntra RFID Lab — Esperando Antena USB";
+                if (Dc06.Connected && Dc01.Connected)
+                    _trayIcon.Text = "Zyntra RFID Lab — DC06 + PAD DC01";
+                else if (Dc06.Connected)
+                    _trayIcon.Text = "Zyntra RFID Lab — BRD-DC06 (" + Dc06.PowerDbm + " dBm)";
+                else if (Dc01.Connected)
+                    _trayIcon.Text = "Zyntra RFID Lab — PAD DC01 (" + Dc01.PowerDbm + " dBm)";
+                else
+                    _trayIcon.Text = "Zyntra RFID Lab — Esperando Antena USB";
             }
         }
 
@@ -1508,6 +1643,12 @@ namespace ZyntraRfidLab
                         int port = ExtractJsonInt(body, "port", 1);
                         bool state = body.Contains("\"on\":true");
                         Gate.SetGpo(port, state);
+                        SendTcpJson(stream, BuildStateJson());
+                        return;
+                    }
+                    if (path == "/api/usb/swap" && method == "POST")
+                    {
+                        SwapUsbRoles();
                         SendTcpJson(stream, BuildStateJson());
                         return;
                     }
