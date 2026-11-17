@@ -1162,10 +1162,6 @@ namespace ZyntraRfidLab
                     AntennaEnabled[0] = true;
                 }
 
-                // Ensure CarrierWave mode is cleanly exited with CRP Stop (0x02, 0xFF)
-                SendTcpFrame(BuildGrpPassCrpFrame(0x02, 0xFF, null));
-                Thread.Sleep(260);
-
                 SyncPowerToHardware();
                 StartInventory();
 
@@ -1292,9 +1288,6 @@ namespace ZyntraRfidLab
         {
             if (!Connected) return;
             Scanning = true;
-            byte mask = GetEnabledAntennaMask();
-            SendTcpFrame(BuildGrpPassCrpFrame(0x02, 0x07, new byte[] { mask }));
-            Thread.Sleep(260);
             // Start BRD-2204 Gate ManualInventory: EA 00 04 01 57 01 B9
             SendTcpFrame(BuildGrpFrame(0x01, 0x57, new byte[] { 0x01 }));
             StatusText = "BRD-2204 Leyendo en Vivo (" + ReaderIp + ":" + ReaderPort + ")";
@@ -1329,11 +1322,11 @@ namespace ZyntraRfidLab
             if (wasScanning)
             {
                 SendTcpFrame(BuildGrpFrame(0x01, 0x57, new byte[] { 0x00 }));
-                Thread.Sleep(220);
+                Thread.Sleep(350);
             }
             byte mask = GetEnabledAntennaMask();
             SendTcpFrame(BuildGrpPassCrpFrame(0x02, 0x07, new byte[] { mask }));
-            Thread.Sleep(260);
+            Thread.Sleep(580);
             byte[] payload = new byte[]
             {
                 0x01, (byte)AntennaPower[0],
@@ -1342,7 +1335,7 @@ namespace ZyntraRfidLab
                 0x04, (byte)AntennaPower[3]
             };
             SendTcpFrame(BuildGrpPassCrpFrame(0x02, 0x01, payload));
-            Thread.Sleep(260);
+            Thread.Sleep(580);
             if (wasScanning)
             {
                 SendTcpFrame(BuildGrpFrame(0x01, 0x57, new byte[] { 0x01 }));
