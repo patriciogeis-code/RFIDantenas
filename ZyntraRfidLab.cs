@@ -886,6 +886,7 @@ namespace ZyntraRfidLab
         public double[] AntennaReturnLossDb = new double[] { 0.0, 0.0, 0.0, 0.0 };
         public bool DetectingAntennas = false;
         private volatile int _currentSwrProbeAnt = -1;
+        private readonly AutoResetEvent _swrReplyEvent = new AutoResetEvent(false);
         private int _invCycleCount = 0;
         private int _nextAutoProbeAnt = 0;
         public long LastRxMs = 0;
@@ -1240,10 +1241,17 @@ namespace ZyntraRfidLab
                 {
                     if (!Connected) break;
                     _currentSwrProbeAnt = i;
-                    // MsgCarrierWave (CRP 0x05, 0x00) triggers BRD-2204 620ms hardware SWR macro (GRP 0x49)
+                    _swrReplyEvent.Reset();
+                    // MsgCarrierWave (CRP 0x05, 0x00) triggers BRD-2204 hardware SWR macro (GRP 0x49)
                     byte mask = (byte)(1 << i);
                     SendTcpFrame(BuildGrpPassCrpFrame(0x05, 0x00, new byte[] { mask, 0x00 }));
-                    Thread.Sleep(760);
+                    if (!_swrReplyEvent.WaitOne(1250))
+                    {
+                        // Retry once if the Ex10V2 module was still settling
+                        SendTcpFrame(BuildGrpPassCrpFrame(0x05, 0x00, new byte[] { mask, 0x00 }));
+                        _swrReplyEvent.WaitOne(1250);
+                    }
+                    Thread.Sleep(150);
                 }
                 _currentSwrProbeAnt = -1;
 
@@ -1683,6 +1691,7 @@ namespace ZyntraRfidLab
                     bool isPlugged = (fwd > 0 && diff >= 35);
                     AntennaPlugged[probeAnt] = isPlugged;
                     AntennaEnabled[probeAnt] = isPlugged;
+                    _swrReplyEvent.Set();
                 }
             }
             else if (cmd == 0x67 && payLen >= 2)
