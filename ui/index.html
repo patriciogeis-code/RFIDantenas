@@ -1035,7 +1035,7 @@
               <table>
                 <thead>
                   <tr>
-                    <th>Código ASCII</th>
+                    <th>Código / EPC</th>
                     <th>Antena</th>
                     <th>RSSI</th>
                     <th>Lecturas</th>
@@ -1642,7 +1642,12 @@
         if (g.tags && g.tags.length > 0) {
           tbG.innerHTML = g.tags.map(t => `
             <tr>
-              <td style="font-weight:800; color:#38bdf8;">${t.epcAscii || t.epcHex}</td>
+              <td>
+                ${t.epcAscii
+                  ? `<div style="font-weight:800; color:#38bdf8;">${t.epcAscii}</div><div style="font-size:10px; color:#64748b; font-family:monospace;">${t.epcHex}</div>`
+                  : `<div style="font-weight:700; color:#cbd5e1; font-family:monospace; font-size:11px;">${t.epcHex}</div><div style="font-size:9.5px; color:#64748b;">HEX binario (sin texto ASCII)</div>`
+                }
+              </td>
               <td><span class="badge badge-sky">ANT #${t.antenna}</span></td>
               <td>${t.rssiDbm} dBm</td>
               <td><strong>${t.count}</strong></td>

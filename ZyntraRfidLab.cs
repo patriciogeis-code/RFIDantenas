@@ -231,16 +231,105 @@ namespace ZyntraRfidLab
 
         public static string HexToCleanAscii(string hex)
         {
-            if (string.IsNullOrEmpty(hex)) return "";
-            StringBuilder sb = new StringBuilder();
-            for (int i = 0; i + 1 < hex.Length; i += 2)
+            if (string.IsNullOrEmpty(hex) || hex.Length < 2) return "";
+            int byteCount = hex.Length / 2;
+            byte[] bytes = new byte[byteCount];
+            for (int i = 0; i < byteCount; i++)
             {
-                int val = Convert.ToInt32(hex.Substring(i, 2), 16);
-                if (val == 0) continue;
-                if (val >= 32 && val <= 126)
-                    sb.Append((char)val);
+                int b;
+                if (!int.TryParse(hex.Substring(i * 2, 2), System.Globalization.NumberStyles.HexNumber, null, out b))
+                    return "";
+                bytes[i] = (byte)b;
             }
-            return sb.ToString().Trim();
+
+            // Trim trailing 0x00 / 0xFF padding
+            int end = byteCount;
+            while (end > 0 && (bytes[end - 1] == 0x00 || bytes[end - 1] == 0xFF))
+                end--;
+
+            if (end == 0) return "";
+
+            // 1. Check if ALL payload bytes are valid printable ASCII (0x20..0x7E)
+            bool allAscii = true;
+            for (int i = 0; i < end; i++)
+            {
+                if (bytes[i] < 0x20 || bytes[i] > 0x7E)
+                {
+                    allAscii = false;
+                    break;
+                }
+            }
+            if (allAscii)
+            {
+                return Encoding.ASCII.GetString(bytes, 0, end).Trim();
+            }
+
+            // 2. Check GS1 SGTIN-96 (12 bytes = 96 bits, Header = 0x30)
+            if (byteCount == 12 && bytes[0] == 0x30)
+            {
+                string sgtin = TryDecodeSgtin96(bytes);
+                if (!string.IsNullOrEmpty(sgtin))
+                    return sgtin;
+            }
+
+            // 3. Otherwise it is raw binary/factory HEX (do NOT invent fake characters like "G7" or "0:")
+            return "";
+        }
+
+        public static string TryDecodeSgtin96(byte[] bytes)
+        {
+            try
+            {
+                if (bytes == null || bytes.Length != 12 || bytes[0] != 0x30) return "";
+                int partition = (bytes[1] >> 2) & 0x07;
+                if (partition > 6) return "";
+
+                int[] compBitsTbl = { 40, 37, 34, 30, 27, 24, 20 };
+                int[] compDigTbl  = { 12, 11, 10, 9,  8,  7,  6  };
+                int[] itemBitsTbl = { 4,  7,  10, 14, 17, 20, 24 };
+                int[] itemDigTbl  = { 1,  2,  3,  4,  5,  6,  7  };
+
+                int compBits = compBitsTbl[partition];
+                int compDig  = compDigTbl[partition];
+                int itemBits = itemBitsTbl[partition];
+                int itemDig  = itemDigTbl[partition];
+
+                ulong company = ReadBits(bytes, 14, compBits);
+                ulong itemRef = ReadBits(bytes, 14 + compBits, itemBits);
+                ulong serial  = ReadBits(bytes, 14 + compBits + itemBits, 38);
+
+                string compStr = company.ToString().PadLeft(compDig, '0');
+                string itemStr = itemRef.ToString().PadLeft(itemDig, '0');
+                if (compStr.Length > compDig || itemStr.Length > itemDig) return "";
+
+                string indicator = itemStr.Substring(0, 1);
+                string itemBody = itemStr.Substring(1);
+                string gtin13NoCheck = indicator + compStr + itemBody;
+                if (gtin13NoCheck.Length != 13) return "";
+
+                int sum = 0;
+                for (int i = 0; i < 13; i++)
+                {
+                    int d = gtin13NoCheck[i] - '0';
+                    sum += (i % 2 == 0) ? d * 3 : d;
+                }
+                int check = (10 - (sum % 10)) % 10;
+                string gtin = (indicator == "0") ? (gtin13NoCheck.Substring(1) + check) : (gtin13NoCheck + check);
+                return "GS1 " + gtin + " #" + serial;
+            }
+            catch { return ""; }
+        }
+
+        private static ulong ReadBits(byte[] data, int bitOffset, int bitCount)
+        {
+            ulong val = 0;
+            for (int i = 0; i < bitCount; i++)
+            {
+                int pos = bitOffset + i;
+                int b = (data[pos >> 3] >> (7 - (pos & 7))) & 1;
+                val = (val << 1) | (ulong)b;
+            }
+            return val;
         }
 
         public static string AsciiToHexPadded(string text, int byteLen)
