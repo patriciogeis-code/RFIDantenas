@@ -792,7 +792,11 @@ namespace ZyntraRfidLab
         public string UsbLanIp = "";
 
         public int[] AntennaPower = new int[] { 26, 26, 26, 26 }; // ANT 1..4 in dBm (10..33)
-        public bool[] AntennaEnabled = new bool[] { true, true, true, true };
+        public bool[] AntennaEnabled = new bool[] { true, false, false, false };
+        public bool[] AntennaPlugged = new bool[] { false, false, false, false };
+        public double[] AntennaReturnLossDb = new double[] { 0.0, 0.0, 0.0, 0.0 };
+        public bool DetectingAntennas = false;
+        private volatile int _currentSwrProbeAnt = -1;
         public int[] AntennaReadCounts = new int[] { 0, 0, 0, 0 };
         public int[] AntennaLastRssi = new int[] { -75, -75, -75, -75 };
 
@@ -1102,12 +1106,10 @@ namespace ZyntraRfidLab
                 Thread.Sleep(50);
                 SendTcpFrame(BuildGrpPassCrpFrame(0x02, 0x02, null));
                 Thread.Sleep(50);
-                // 3. Sync antenna mask and per-antenna power, then start continuous scan
-                SyncPowerToHardware();
-                Thread.Sleep(70);
-                StartInventory();
+                // 3. Detect physically connected antennas via SWR (CRP 0x05, 0x00) and start scan
+                Task.Run(() => DetectPhysicalAntennas());
 
-                StatusText = "BRD-2204 Conectado y Leyendo (" + ip + ":" + port + ")";
+                StatusText = "BRD-2204 Conectado — Detectando antenas enchufadas (" + ip + ":" + port + ")...";
                 msg = StatusText;
                 return true;
             }
@@ -1117,6 +1119,63 @@ namespace ZyntraRfidLab
                 StatusText = "Error TCP: " + ex.Message;
                 msg = StatusText;
                 return false;
+            }
+        }
+
+        public void DetectPhysicalAntennas()
+        {
+            if (!Connected || DetectingAntennas) return;
+            DetectingAntennas = true;
+            bool wasScanning = Scanning;
+            Scanning = false;
+            try
+            {
+                StatusText = "Midiendo SWR en puertos SMA 1 a 4 para detectar antenas enchufadas...";
+                SendTcpFrame(BuildGrpFrame(0x01, 0x57, new byte[] { 0x00 }));
+                Thread.Sleep(350);
+
+                for (int i = 0; i < 4; i++)
+                {
+                    if (!Connected) break;
+                    _currentSwrProbeAnt = i;
+                    // MsgCarrierWave (CRP 0x05, 0x00) triggers BRD-2204 620ms hardware SWR macro (GRP 0x49)
+                    byte mask = (byte)(1 << i);
+                    SendTcpFrame(BuildGrpPassCrpFrame(0x05, 0x00, new byte[] { mask, 0x00 }));
+                    Thread.Sleep(760);
+                }
+                _currentSwrProbeAnt = -1;
+
+                List<string> connList = new List<string>();
+                for (int i = 0; i < 4; i++)
+                {
+                    if (AntennaPlugged[i])
+                        connList.Add("ANT #" + (i + 1) + " (" + AntennaReturnLossDb[i].ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " dB)");
+                }
+
+                if (connList.Count > 0)
+                {
+                    for (int i = 0; i < 4; i++)
+                        AntennaEnabled[i] = AntennaPlugged[i];
+                }
+                else
+                {
+                    AntennaEnabled[0] = true;
+                }
+
+                SyncPowerToHardware();
+                Thread.Sleep(70);
+                StartInventory();
+
+                if (connList.Count > 0)
+                    StatusText = "Antenas detectadas (" + connList.Count + "/4): " + string.Join(", ", connList.ToArray());
+                else
+                    StatusText = "BRD-2204 Activo (" + ReaderIp + ":" + ReaderPort + ") — Ninguna antena detectada por SWR";
+            }
+            catch { }
+            finally
+            {
+                _currentSwrProbeAnt = -1;
+                DetectingAntennas = false;
             }
         }
 
@@ -1457,6 +1516,7 @@ namespace ZyntraRfidLab
                 _readsInCurrentSec++;
                 AntennaReadCounts[antId - 1]++;
                 AntennaLastRssi[antId - 1] = rssiDbm;
+                AntennaPlugged[antId - 1] = true;
 
                 TagReadRecord rec = GateTags.AddOrUpdate(epcHex,
                     k => new TagReadRecord
@@ -1496,6 +1556,19 @@ namespace ZyntraRfidLab
                     int dbm = buf[payStart + 1 + i];
                     if (dbm >= 5 && dbm <= 33)
                         AntennaPower[i] = dbm;
+                }
+            }
+            else if (cmd == 0x49 && payLen >= 3)
+            {
+                // SWR directional coupler report: [0x00, forward, backward, ...]
+                int fwd = buf[payStart + 1];
+                int bwd = buf[payStart + 2];
+                int diff = Math.Max(0, fwd - bwd);
+                int probeAnt = _currentSwrProbeAnt;
+                if (probeAnt >= 0 && probeAnt < 4)
+                {
+                    AntennaReturnLossDb[probeAnt] = Math.Round(diff / 5.0, 1);
+                    AntennaPlugged[probeAnt] = (fwd > 0 && diff >= 35);
                 }
             }
             else if (cmd == 0x67 && payLen >= 2)
@@ -2433,7 +2506,14 @@ namespace ZyntraRfidLab
                         if (ant >= 1 && ant <= 4)
                         {
                             Gate.AntennaEnabled[ant - 1] = !Gate.AntennaEnabled[ant - 1];
+                            Gate.SyncPowerToHardware();
                         }
+                        SendTcpJson(stream, BuildStateJson());
+                        return;
+                    }
+                    if (path == "/api/gate/detect-antennas" && method == "POST")
+                    {
+                        Task.Run(() => Gate.DetectPhysicalAntennas());
                         SendTcpJson(stream, BuildStateJson());
                         return;
                     }
@@ -2548,6 +2628,9 @@ namespace ZyntraRfidLab
             sb.Append("\"calibrationReport\":\"").Append(EscapeJson(Gate.LastCalibrationReport)).Append("\",");
             sb.Append("\"powers\":[").Append(Gate.AntennaPower[0]).Append(",").Append(Gate.AntennaPower[1]).Append(",").Append(Gate.AntennaPower[2]).Append(",").Append(Gate.AntennaPower[3]).Append("],");
             sb.Append("\"enabled\":[").Append(Gate.AntennaEnabled[0] ? "true" : "false").Append(",").Append(Gate.AntennaEnabled[1] ? "true" : "false").Append(",").Append(Gate.AntennaEnabled[2] ? "true" : "false").Append(",").Append(Gate.AntennaEnabled[3] ? "true" : "false").Append("],");
+            sb.Append("\"plugged\":[").Append(Gate.AntennaPlugged[0] ? "true" : "false").Append(",").Append(Gate.AntennaPlugged[1] ? "true" : "false").Append(",").Append(Gate.AntennaPlugged[2] ? "true" : "false").Append(",").Append(Gate.AntennaPlugged[3] ? "true" : "false").Append("],");
+            sb.Append("\"returnLoss\":[").Append(Gate.AntennaReturnLossDb[0].ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)).Append(",").Append(Gate.AntennaReturnLossDb[1].ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)).Append(",").Append(Gate.AntennaReturnLossDb[2].ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)).Append(",").Append(Gate.AntennaReturnLossDb[3].ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)).Append("],");
+            sb.Append("\"detectingAntennas\":").Append(Gate.DetectingAntennas ? "true" : "false").Append(",");
             sb.Append("\"antCounts\":[").Append(Gate.AntennaReadCounts[0]).Append(",").Append(Gate.AntennaReadCounts[1]).Append(",").Append(Gate.AntennaReadCounts[2]).Append(",").Append(Gate.AntennaReadCounts[3]).Append("],");
             sb.Append("\"antRssi\":[").Append(Gate.AntennaLastRssi[0]).Append(",").Append(Gate.AntennaLastRssi[1]).Append(",").Append(Gate.AntennaLastRssi[2]).Append(",").Append(Gate.AntennaLastRssi[3]).Append("],");
             sb.Append("\"gpi1\":").Append(Gate.Gpi1Internal ? "true" : "false").Append(",");
