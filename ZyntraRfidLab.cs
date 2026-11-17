@@ -776,9 +776,9 @@ namespace ZyntraRfidLab
 
     public class GatePortalManager
     {
-        public string ReaderIp = "192.168.1.201";
+        public string ReaderIp = "192.168.0.201";
         public int ReaderPort = 9090;
-        public string SerialNumber = "BRD-2204 (4 Puertos SMA)";
+        public string SerialNumber = "BRD-2204 (Impinj E710 — 4 Puertos SMA)";
         public bool Connected = false;
         public bool Scanning = false;
         public bool SimulationMode = false;
@@ -977,17 +977,17 @@ namespace ZyntraRfidLab
             }
             catch { }
 
-            // 2. Parallel TCP probe of BRD-2204 IPs (including 192.168.1.201) and ports
+            // 2. Parallel TCP probe of BRD-2204 IPs (including 192.168.0.201 and 192.168.1.201) and ports
             string[] candidateIps = new string[]
             {
                 ReaderIp,
+                "192.168.0.201",
                 "192.168.1.201",
                 "192.168.1.116",
                 "192.168.1.168",
                 "192.168.1.100",
                 "192.168.1.250",
                 "192.168.1.1",
-                "192.168.0.201",
                 "192.168.0.116",
                 "192.168.0.168"
             };
@@ -1093,19 +1093,18 @@ namespace ZyntraRfidLab
                 _cts = new CancellationTokenSource();
                 Task.Run(() => TcpReadLoop(_cts.Token));
 
-                // Initialize GX protocol on BRD-2204: Stop, GetReaderInfo, GetPower, AutoDormancy OFF, Baseband Fast Dual Target
-                SendTcpFrame(GxProtocol.BuildFrame(0x02, 0xFF, null));
+                // Initialize BRD-2204 GRP (0xEA) + CRP (0xAA) protocol:
+                // 1. Stop ManualInventory (EA 00 04 01 57 00 BA)
+                SendTcpFrame(BuildGrpFrame(0x01, 0x57, new byte[] { 0x00 }));
                 Thread.Sleep(60);
-                SendTcpFrame(GxProtocol.BuildFrame(0x01, 0x00, null));
+                // 2. Query Reader Info (CRP 01 00) & Power (CRP 02 02)
+                SendTcpFrame(BuildGrpPassCrpFrame(0x01, 0x00, null));
                 Thread.Sleep(50);
-                SendTcpFrame(GxProtocol.BuildFrame(0x02, 0x02, null));
+                SendTcpFrame(BuildGrpPassCrpFrame(0x02, 0x02, null));
                 Thread.Sleep(50);
-                SendTcpFrame(GxProtocol.BuildFrame(0x02, 0x0D, new byte[] { 0x00 }));
-                Thread.Sleep(50);
-                SendTcpFrame(GxProtocol.BuildFrame(0x02, 0x0B, new byte[] { 0x01, 0x01, 0x02, 0x01, 0x03, 0x00, 0x04, 0x02 }));
-                Thread.Sleep(50);
+                // 3. Sync antenna mask and per-antenna power, then start continuous scan
                 SyncPowerToHardware();
-                Thread.Sleep(80);
+                Thread.Sleep(70);
                 StartInventory();
 
                 StatusText = "BRD-2204 Conectado y Leyendo (" + ip + ":" + port + ")";
@@ -1121,13 +1120,79 @@ namespace ZyntraRfidLab
             }
         }
 
+        public static ushort Crc16Crp(byte[] data, int offset, int length)
+        {
+            ushort crc = 0x0000;
+            for (int i = offset; i < offset + length; i++)
+            {
+                crc ^= (ushort)(data[i] << 8);
+                for (int j = 0; j < 8; j++)
+                {
+                    if ((crc & 0x8000) != 0)
+                        crc = (ushort)((crc << 1) ^ 0x8005);
+                    else
+                        crc <<= 1;
+                }
+            }
+            return crc;
+        }
+
+        public static byte[] BuildCrpFrame(byte category, byte mid, byte[] payload)
+        {
+            int payLen = payload != null ? payload.Length : 0;
+            byte[] f = new byte[7 + payLen];
+            f[0] = 0xAA;
+            f[1] = category;
+            f[2] = mid;
+            f[3] = (byte)((payLen >> 8) & 0xFF);
+            f[4] = (byte)(payLen & 0xFF);
+            if (payLen > 0)
+                Buffer.BlockCopy(payload, 0, f, 5, payLen);
+            ushort crc = Crc16Crp(f, 1, 4 + payLen);
+            f[5 + payLen] = (byte)((crc >> 8) & 0xFF);
+            f[6 + payLen] = (byte)(crc & 0xFF);
+            return f;
+        }
+
+        public static byte[] BuildGrpFrame(byte flag, byte cmd, byte[] payload)
+        {
+            int payLen = payload != null ? payload.Length : 0;
+            int totalLen = 3 + 2 + payLen + 1;
+            int lenField = 2 + payLen + 1;
+            byte[] f = new byte[totalLen];
+            f[0] = 0xEA;
+            f[1] = (byte)((lenField >> 8) & 0xFF);
+            f[2] = (byte)(lenField & 0xFF);
+            f[3] = flag;
+            f[4] = cmd;
+            if (payLen > 0)
+                Buffer.BlockCopy(payload, 0, f, 5, payLen);
+            int sum = 0;
+            for (int i = 0; i < totalLen - 1; i++)
+                sum = (sum + f[i]) & 0xFF;
+            f[totalLen - 1] = (byte)(((0xFF ^ sum) + 1) & 0xFF);
+            return f;
+        }
+
+        public static byte[] BuildGrpPassCrpFrame(byte crpCat, byte crpMid, byte[] crpPayload)
+        {
+            byte[] crp = BuildCrpFrame(crpCat, crpMid, crpPayload);
+            byte[] passPay = new byte[4 + crp.Length];
+            passPay[0] = 0x01; // ProtocolVersion.CRP
+            passPay[1] = 0x01; // Reader Address 1
+            passPay[2] = 0x00;
+            passPay[3] = 0x00;
+            Buffer.BlockCopy(crp, 0, passPay, 4, crp.Length);
+            return BuildGrpFrame(0x01, 0xA1, passPay);
+        }
+
         public void DisconnectTcp()
         {
             Scanning = false;
             try
             {
                 if (Connected && _netStream != null)
-                    SendTcpFrame(GxProtocol.BuildFrame(0x02, 0xFF, null));
+                    SendTcpFrame(BuildGrpFrame(0x01, 0x57, new byte[] { 0x00 }));
             }
             catch { }
             try { if (_cts != null) _cts.Cancel(); } catch { }
@@ -1166,7 +1231,10 @@ namespace ZyntraRfidLab
             if (!Connected) return;
             Scanning = true;
             byte mask = GetEnabledAntennaMask();
-            SendTcpFrame(GxProtocol.BuildFrame(0x02, 0x10, new byte[] { 0x00, 0x00, 0x00, mask, 0x01 }));
+            SendTcpFrame(BuildGrpPassCrpFrame(0x02, 0x07, new byte[] { mask }));
+            Thread.Sleep(35);
+            // Start BRD-2204 Gate ManualInventory: EA 00 04 01 57 01 B9
+            SendTcpFrame(BuildGrpFrame(0x01, 0x57, new byte[] { 0x01 }));
             StatusText = "BRD-2204 Leyendo en Vivo (" + ReaderIp + ":" + ReaderPort + ")";
         }
 
@@ -1174,7 +1242,8 @@ namespace ZyntraRfidLab
         {
             Scanning = false;
             if (!Connected) return;
-            SendTcpFrame(GxProtocol.BuildFrame(0x02, 0xFF, null));
+            // Stop BRD-2204 Gate ManualInventory: EA 00 04 01 57 00 BA
+            SendTcpFrame(BuildGrpFrame(0x01, 0x57, new byte[] { 0x00 }));
             StatusText = "BRD-2204 en Espera (" + ReaderIp + ":" + ReaderPort + ")";
         }
 
@@ -1197,9 +1266,12 @@ namespace ZyntraRfidLab
             bool wasScanning = Scanning;
             if (wasScanning)
             {
-                SendTcpFrame(GxProtocol.BuildFrame(0x02, 0xFF, null));
+                SendTcpFrame(BuildGrpFrame(0x01, 0x57, new byte[] { 0x00 }));
                 Thread.Sleep(50);
             }
+            byte mask = GetEnabledAntennaMask();
+            SendTcpFrame(BuildGrpPassCrpFrame(0x02, 0x07, new byte[] { mask }));
+            Thread.Sleep(40);
             byte[] payload = new byte[]
             {
                 0x01, (byte)AntennaPower[0],
@@ -1207,12 +1279,11 @@ namespace ZyntraRfidLab
                 0x03, (byte)AntennaPower[2],
                 0x04, (byte)AntennaPower[3]
             };
-            SendTcpFrame(GxProtocol.BuildFrame(0x02, 0x01, payload));
+            SendTcpFrame(BuildGrpPassCrpFrame(0x02, 0x01, payload));
             if (wasScanning)
             {
                 Thread.Sleep(60);
-                byte mask = GetEnabledAntennaMask();
-                SendTcpFrame(GxProtocol.BuildFrame(0x02, 0x10, new byte[] { 0x00, 0x00, 0x00, mask, 0x01 }));
+                SendTcpFrame(BuildGrpFrame(0x01, 0x57, new byte[] { 0x01 }));
             }
         }
 
@@ -1225,7 +1296,8 @@ namespace ZyntraRfidLab
 
             if (Connected)
             {
-                SendTcpFrame(GxProtocol.BuildFrame(0x01, 0x09, new byte[] { (byte)port, (byte)(on ? 1 : 0) }));
+                // BRD-2204 Gate_GpoConfig (0x63): EA 00 05 01 63 <port> <level> <chk>
+                SendTcpFrame(BuildGrpFrame(0x01, 0x63, new byte[] { (byte)port, (byte)(on ? 1 : 0) }));
             }
         }
 
@@ -1285,9 +1357,24 @@ namespace ZyntraRfidLab
                     accumLen += n;
 
                     int idx = 0;
-                    while (idx <= accumLen - 9)
+                    while (idx <= accumLen - 6)
                     {
-                        if (accum[idx] == 0x5A && accum[idx + 1] == 0x00 && accum[idx + 2] == 0x01)
+                        if (accum[idx] == 0xEA)
+                        {
+                            int lenField = (accum[idx + 1] << 8) | accum[idx + 2];
+                            if (lenField < 3 || lenField > 1024)
+                            {
+                                idx++;
+                                continue;
+                            }
+                            int frameLen = 3 + lenField;
+                            if (idx + frameLen > accumLen)
+                                break; // wait for rest of 0xEA frame
+
+                            ProcessGateGrpFrame(accum, idx, frameLen);
+                            idx += frameLen;
+                        }
+                        else if (idx <= accumLen - 9 && accum[idx] == 0x5A && accum[idx + 1] == 0x00 && accum[idx + 2] == 0x01)
                         {
                             int payLen = (accum[idx + 5] << 8) | accum[idx + 6];
                             if (payLen < 0 || payLen > 1024)
@@ -1297,7 +1384,7 @@ namespace ZyntraRfidLab
                             }
                             int frameLen = 7 + payLen + 2;
                             if (idx + frameLen > accumLen)
-                                break; // wait for rest of frame
+                                break; // wait for rest of 0x5A frame
 
                             ProcessGateGxFrame(accum, idx, frameLen);
                             idx += frameLen;
@@ -1324,6 +1411,130 @@ namespace ZyntraRfidLab
                         StatusText = "Conexión TCP cerrada con BRD-2204";
                     }
                     break;
+                }
+            }
+        }
+
+        private void ProcessGateGrpFrame(byte[] buf, int offset, int frameLen)
+        {
+            if (frameLen < 6) return;
+            byte flag = buf[offset + 3];
+            byte cmd = buf[offset + 4];
+            int payStart = offset + 5;
+            int payLen = frameLen - 6;
+
+            long nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            if (nowMs - _lastRpsTickMs >= 1000)
+            {
+                ReadsPerSec = _readsInCurrentSec;
+                _readsInCurrentSec = 0;
+                _lastRpsTickMs = nowMs;
+            }
+
+            if (cmd == 0xA3 && payLen >= 7)
+            {
+                // Gate_RxdTagData: [epcLen_hi, epcLen_lo, epcBytes..., portNum, portState, antenna, rssi_hi, rssi_lo, ...]
+                int epcLen = (buf[payStart] << 8) | buf[payStart + 1];
+                if (epcLen <= 0 || 2 + epcLen + 5 > payLen) return;
+
+                StringBuilder sbEpc = new StringBuilder(epcLen * 2);
+                for (int i = 0; i < epcLen; i++)
+                    sbEpc.Append(buf[payStart + 2 + i].ToString("X2"));
+                string epcHex = sbEpc.ToString();
+
+                int metaPos = payStart + 2 + epcLen;
+                int antId = buf[metaPos + 2];
+                if (antId < 1 || antId > 4) antId = 1;
+
+                short rssiTenths = (short)((buf[metaPos + 3] << 8) | buf[metaPos + 4]);
+                int rssiDbm = (int)Math.Round(rssiTenths / 10.0);
+                if (rssiDbm > -15) rssiDbm = -45;
+                if (rssiDbm < -95) rssiDbm = -95;
+
+                int rssiRaw = Math.Max(1, Math.Min(35, (int)Math.Round(((rssiDbm + 85) / 52.0) * 35.0)));
+
+                TotalReads++;
+                _readsInCurrentSec++;
+                AntennaReadCounts[antId - 1]++;
+                AntennaLastRssi[antId - 1] = rssiDbm;
+
+                TagReadRecord rec = GateTags.AddOrUpdate(epcHex,
+                    k => new TagReadRecord
+                    {
+                        EpcHex = epcHex,
+                        EpcAscii = GxProtocol.HexToCleanAscii(epcHex),
+                        TidHex = "",
+                        ChipModel = GxProtocol.DecodeChipFromTid(epcHex),
+                        Antenna = antId,
+                        RssiRaw = rssiRaw,
+                        RssiDbm = rssiDbm,
+                        FreqMhz = 915.25,
+                        ReadCount = 1,
+                        FirstSeenMs = nowMs,
+                        LastSeenMs = nowMs,
+                        SourceDevice = "BRD-2204"
+                    },
+                    (k, existing) =>
+                    {
+                        existing.EpcHex = epcHex;
+                        existing.EpcAscii = GxProtocol.HexToCleanAscii(epcHex);
+                        existing.Antenna = antId;
+                        existing.RssiRaw = rssiRaw;
+                        existing.RssiDbm = rssiDbm;
+                        existing.ReadCount++;
+                        existing.LastSeenMs = nowMs;
+                        return existing;
+                    });
+
+                LatestTag = rec;
+            }
+            else if (cmd == 0x41 && payLen >= 5)
+            {
+                // Power query reply: [0x00, p1, p2, p3, p4]
+                for (int i = 0; i < 4 && (1 + i) < payLen; i++)
+                {
+                    int dbm = buf[payStart + 1 + i];
+                    if (dbm >= 5 && dbm <= 33)
+                        AntennaPower[i] = dbm;
+                }
+            }
+            else if (cmd == 0x67 && payLen >= 2)
+            {
+                // Gate_RxdGpiTriggerState
+                byte gpiPort = buf[payStart];
+                byte level = buf[payStart + 1];
+                if (gpiPort == 1)
+                {
+                    Gpi1Internal = (level == 0);
+                    if (Gpi1Internal) LastDirection = Gpi2External ? "ENTRADA AL LOCAL" : "DETECTANDO PASO INTERNO (IN1)";
+                }
+                if (gpiPort == 2)
+                {
+                    Gpi2External = (level == 0);
+                    if (Gpi2External) LastDirection = Gpi1Internal ? "SALIDA HACIA CALLE" : "DETECTANDO PASO EXTERNO (IN2)";
+                }
+            }
+            else if (cmd == 0xA1 && payLen >= 9)
+            {
+                // Gate_PassingMessages inner CRP frame starts at payStart + 4 (0xAA)
+                int crpStart = payStart + 4;
+                if (buf[crpStart] == 0xAA)
+                {
+                    byte crpCat = buf[crpStart + 1];
+                    byte crpMid = buf[crpStart + 2];
+                    if (crpCat == 0x12 && crpMid == 0x01)
+                    {
+                        // Inventory cycle ended; if still scanning, re-trigger ManualInventory
+                        if (Scanning && Connected)
+                        {
+                            Task.Run(() =>
+                            {
+                                Thread.Sleep(40);
+                                if (Scanning && Connected)
+                                    SendTcpFrame(BuildGrpFrame(0x01, 0x57, new byte[] { 0x01 }));
+                            });
+                        }
+                    }
                 }
             }
         }
