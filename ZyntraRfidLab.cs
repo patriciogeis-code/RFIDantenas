@@ -792,11 +792,14 @@ namespace ZyntraRfidLab
         public string UsbLanIp = "";
 
         public int[] AntennaPower = new int[] { 26, 26, 26, 26 }; // ANT 1..4 in dBm (10..33)
-        public bool[] AntennaEnabled = new bool[] { true, false, false, false };
+        public bool[] AntennaEnabled = new bool[] { false, false, false, false };
         public bool[] AntennaPlugged = new bool[] { false, false, false, false };
         public double[] AntennaReturnLossDb = new double[] { 0.0, 0.0, 0.0, 0.0 };
         public bool DetectingAntennas = false;
         private volatile int _currentSwrProbeAnt = -1;
+        private int _invCycleCount = 0;
+        private int _nextAutoProbeAnt = 0;
+        public long LastRxMs = 0;
         public int[] AntennaReadCounts = new int[] { 0, 0, 0, 0 };
         public int[] AntennaLastRssi = new int[] { -75, -75, -75, -75 };
 
@@ -864,12 +867,18 @@ namespace ZyntraRfidLab
                     UsbLanReady = false;
                     UsbLanDescription = "No detectado";
                     UsbLanIp = "Sin adaptador Ethernet";
+                    if (Connected) DisconnectTcp();
+                    StatusText = "Adaptador USB-Red desconectado — Lector y antenas apagados";
                     return;
                 }
 
                 UsbLanAdapterName = bestNic.Name;
                 UsbLanDescription = bestNic.Description;
                 UsbLanConnected = (bestNic.OperationalStatus == OperationalStatus.Up);
+                if (!UsbLanConnected && Connected)
+                {
+                    DisconnectTcp();
+                }
 
                 var ipProps = bestNic.GetIPProperties();
                 List<string> ipv4List = new List<string>();
@@ -1093,6 +1102,7 @@ namespace ZyntraRfidLab
                 _tcpClient.EndConnect(res);
                 _netStream = _tcpClient.GetStream();
                 Connected = true;
+                LastRxMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
                 SimulationMode = false;
                 _cts = new CancellationTokenSource();
                 Task.Run(() => TcpReadLoop(_cts.Token));
@@ -1151,27 +1161,22 @@ namespace ZyntraRfidLab
                 List<string> connList = new List<string>();
                 for (int i = 0; i < 4; i++)
                 {
+                    AntennaEnabled[i] = AntennaPlugged[i];
                     if (AntennaPlugged[i])
                         connList.Add("ANT #" + (i + 1) + " (" + AntennaReturnLossDb[i].ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " dB)");
                 }
 
-                if (connList.Count > 0)
-                {
-                    for (int i = 0; i < 4; i++)
-                        AntennaEnabled[i] = AntennaPlugged[i];
-                }
-                else
-                {
-                    AntennaEnabled[0] = true;
-                }
-
                 SyncPowerToHardware();
-                StartInventory();
-
                 if (connList.Count > 0)
-                    StatusText = "Antenas detectadas (" + connList.Count + "/4): " + string.Join(", ", connList.ToArray());
+                {
+                    StartInventory();
+                    StatusText = "Antenas enchufadas (" + connList.Count + "/4): " + string.Join(", ", connList.ToArray());
+                }
                 else
-                    StatusText = "BRD-2204 Activo (" + ReaderIp + ":" + ReaderPort + ") — Ninguna antena detectada por SWR";
+                {
+                    Scanning = false;
+                    StatusText = "BRD-2204 Conectado (" + ReaderIp + ":" + ReaderPort + ") — Ninguna antena enchufada en bocas 1 a 4";
+                }
             }
             catch { }
             finally
@@ -1250,6 +1255,13 @@ namespace ZyntraRfidLab
         public void DisconnectTcp()
         {
             Scanning = false;
+            ReadsPerSec = 0;
+            for (int i = 0; i < 4; i++)
+            {
+                AntennaPlugged[i] = false;
+                AntennaEnabled[i] = false;
+                AntennaReturnLossDb[i] = 0.0;
+            }
             try
             {
                 if (Connected && _netStream != null)
@@ -1281,27 +1293,35 @@ namespace ZyntraRfidLab
             byte mask = 0;
             for (int i = 0; i < 4; i++)
             {
-                if (AntennaEnabled[i]) mask |= (byte)(1 << i);
+                if (AntennaPlugged[i] && AntennaEnabled[i]) mask |= (byte)(1 << i);
             }
-            if (mask == 0) mask = 0x0F;
             return mask;
         }
 
         public void StartInventory()
         {
             if (!Connected) return;
+            byte mask = GetEnabledAntennaMask();
+            if (mask == 0)
+            {
+                Scanning = false;
+                StatusText = "Conecta físicamente una antena a las bocas SMA 1–4 del BRD-2204";
+                return;
+            }
             Scanning = true;
-            // Start BRD-2204 Gate ManualInventory: EA 00 04 01 57 01 B9
-            SendTcpFrame(BuildGrpFrame(0x01, 0x57, new byte[] { 0x01 }));
+            // Start CRP MsgTagInventory (0x02, 0x10) only on physically plugged & enabled antennas
+            SendTcpFrame(BuildGrpPassCrpFrame(0x02, 0x10, new byte[] { mask, 0x01 }));
             StatusText = "BRD-2204 Leyendo en Vivo (" + ReaderIp + ":" + ReaderPort + ")";
         }
 
         public void StopInventory()
         {
             Scanning = false;
+            ReadsPerSec = 0;
             if (!Connected) return;
-            // Stop BRD-2204 Gate ManualInventory: EA 00 04 01 57 00 BA
             SendTcpFrame(BuildGrpFrame(0x01, 0x57, new byte[] { 0x00 }));
+            Thread.Sleep(60);
+            SendTcpFrame(BuildGrpPassCrpFrame(0x02, 0xFF, null));
             StatusText = "BRD-2204 en Espera (" + ReaderIp + ":" + ReaderPort + ")";
         }
 
@@ -1325,7 +1345,9 @@ namespace ZyntraRfidLab
             if (wasScanning)
             {
                 SendTcpFrame(BuildGrpFrame(0x01, 0x57, new byte[] { 0x00 }));
-                Thread.Sleep(350);
+                Thread.Sleep(60);
+                SendTcpFrame(BuildGrpPassCrpFrame(0x02, 0xFF, null));
+                Thread.Sleep(550);
             }
             SendTcpFrame(BuildGrpPassCrpFrame(0x02, 0x07, new byte[] { 0x0F }));
             Thread.Sleep(580);
@@ -1340,7 +1362,9 @@ namespace ZyntraRfidLab
             Thread.Sleep(580);
             if (wasScanning)
             {
-                SendTcpFrame(BuildGrpFrame(0x01, 0x57, new byte[] { 0x01 }));
+                byte mask = GetEnabledAntennaMask();
+                if (mask != 0)
+                    SendTcpFrame(BuildGrpPassCrpFrame(0x02, 0x10, new byte[] { mask, 0x01 }));
             }
         }
 
@@ -1481,6 +1505,7 @@ namespace ZyntraRfidLab
             int payLen = frameLen - 6;
 
             long nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            LastRxMs = nowMs;
             if (nowMs - _lastRpsTickMs >= 1000)
             {
                 ReadsPerSec = _readsInCurrentSec;
@@ -1502,6 +1527,7 @@ namespace ZyntraRfidLab
                 int metaPos = payStart + 2 + epcLen;
                 int antId = buf[metaPos + 2];
                 if (antId < 1 || antId > 4) antId = 1;
+                if (!AntennaPlugged[antId - 1] || !AntennaEnabled[antId - 1]) return;
 
                 short rssiTenths = (short)((buf[metaPos + 3] << 8) | buf[metaPos + 4]);
                 int rssiDbm = (int)Math.Round(rssiTenths / 10.0);
@@ -1514,7 +1540,6 @@ namespace ZyntraRfidLab
                 _readsInCurrentSec++;
                 AntennaReadCounts[antId - 1]++;
                 AntennaLastRssi[antId - 1] = rssiDbm;
-                AntennaPlugged[antId - 1] = true;
 
                 TagReadRecord rec = GateTags.AddOrUpdate(epcHex,
                     k => new TagReadRecord
@@ -1566,7 +1591,9 @@ namespace ZyntraRfidLab
                 if (probeAnt >= 0 && probeAnt < 4)
                 {
                     AntennaReturnLossDb[probeAnt] = Math.Round(diff / 5.0, 1);
-                    AntennaPlugged[probeAnt] = (fwd > 0 && diff >= 35);
+                    bool isPlugged = (fwd > 0 && diff >= 65);
+                    AntennaPlugged[probeAnt] = isPlugged;
+                    AntennaEnabled[probeAnt] = isPlugged;
                 }
             }
             else if (cmd == 0x67 && payLen >= 2)
@@ -1595,14 +1622,32 @@ namespace ZyntraRfidLab
                     byte crpMid = buf[crpStart + 2];
                     if (crpCat == 0x12 && crpMid == 0x01)
                     {
-                        // Inventory cycle ended; if still scanning, re-trigger ManualInventory
-                        if (Scanning && Connected)
+                        _invCycleCount++;
+                        // Inventory cycle ended; probe next antenna port every 4th cycle and re-trigger
+                        if (Scanning && Connected && !DetectingAntennas)
                         {
                             Task.Run(() =>
                             {
-                                Thread.Sleep(40);
-                                if (Scanning && Connected)
-                                    SendTcpFrame(BuildGrpFrame(0x01, 0x57, new byte[] { 0x01 }));
+                                if (_invCycleCount % 4 == 0)
+                                {
+                                    int p = (_nextAutoProbeAnt++) % 4;
+                                    _currentSwrProbeAnt = p;
+                                    SendTcpFrame(BuildGrpPassCrpFrame(0x05, 0x00, new byte[] { (byte)(1 << p), 0x00 }));
+                                    Thread.Sleep(680);
+                                    _currentSwrProbeAnt = -1;
+                                }
+                                else
+                                {
+                                    Thread.Sleep(40);
+                                }
+                                if (Scanning && Connected && !DetectingAntennas)
+                                {
+                                    byte mask = GetEnabledAntennaMask();
+                                    if (mask != 0)
+                                        SendTcpFrame(BuildGrpPassCrpFrame(0x02, 0x10, new byte[] { mask, 0x01 }));
+                                    else
+                                        Scanning = false;
+                                }
                             });
                         }
                     }
@@ -1991,9 +2036,22 @@ namespace ZyntraRfidLab
                                 AutoDetectUsbDevices();
                             }
                         }
-                        if (tick % 3 == 0)
+                        Gate.CheckUsbEthernetAdapter();
+                        if (Gate.Connected && !Gate.DetectingAntennas)
                         {
-                            Gate.CheckUsbEthernetAdapter();
+                            long idleMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - Gate.LastRxMs;
+                            if (idleMs > 7000)
+                            {
+                                Gate.DisconnectTcp();
+                                UpdateWindowLabel();
+                            }
+                            else if (idleMs > 4000)
+                            {
+                                Task.Run(() => Gate.DetectPhysicalAntennas());
+                            }
+                        }
+                        if (tick % 2 == 0)
+                        {
                             if (!Gate.Connected && Gate.UsbLanConnected && Gate.UsbLanReady)
                             {
                                 string gMsg;
@@ -2501,7 +2559,7 @@ namespace ZyntraRfidLab
                     if (path == "/api/gate/toggle-ant" && method == "POST")
                     {
                         int ant = ExtractJsonInt(body, "antenna", 1);
-                        if (ant >= 1 && ant <= 4)
+                        if (ant >= 1 && ant <= 4 && Gate.Connected && Gate.AntennaPlugged[ant - 1])
                         {
                             Gate.AntennaEnabled[ant - 1] = !Gate.AntennaEnabled[ant - 1];
                             Gate.SyncPowerToHardware();

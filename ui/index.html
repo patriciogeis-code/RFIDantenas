@@ -780,11 +780,11 @@
               <g class="svg-clickable" onclick="selectGateAntenna(1)" transform="translate(155, 130)">
                 <rect x="-12" y="25" width="18" height="8" rx="2" fill="#64748b" />
                 <rect x="-12" y="65" width="18" height="8" rx="2" fill="#64748b" />
-                <rect id="svgAntBox1" x="8" y="4" width="82" height="88" rx="14" transform="skewY(-5)" fill="url(#antBodyGrad)" stroke="#00f2fe" stroke-width="2.5" />
-                <circle id="svgAntRing1" cx="49" cy="43" r="21" fill="none" stroke="#00f2fe" stroke-width="3.5" filter="url(#neonCyanGlow)" />
+                <rect id="svgAntBox1" x="8" y="4" width="82" height="88" rx="14" transform="skewY(-5)" fill="url(#antBodyGrad)" stroke="#475569" stroke-width="2.5" />
+                <circle id="svgAntRing1" cx="49" cy="43" r="21" fill="none" stroke="#475569" stroke-width="3.5" filter="url(#neonCyanGlow)" />
                 <text x="49" y="18" text-anchor="middle" fill="#e2e8f0" font-size="10" font-weight="bold">ANT 1</text>
-                <text id="svgAntPwr1" x="49" y="47" text-anchor="middle" fill="#ffffff" font-size="11.5" font-weight="bold">26 dBm</text>
-                <text id="svgAntPlug1" x="49" y="80" text-anchor="middle" fill="#34d399" font-size="9" font-weight="bold">● ENCHUFADA</text>
+                <text id="svgAntPwr1" x="49" y="47" text-anchor="middle" fill="#94a3b8" font-size="11.5" font-weight="bold">OFF</text>
+                <text id="svgAntPlug1" x="49" y="80" text-anchor="middle" fill="#64748b" font-size="9" font-weight="bold">○ SIN ANTENA</text>
               </g>
 
               <!-- ANTENA 2 (Abajo Izquierda) -->
@@ -855,7 +855,7 @@
               </g>
             </svg>
 
-            <!-- PANEL EMERGENTE COMPACTO AL HACER CLIC EN UNA ANTENA (PARA REGULAR INTENSIDAD EN VIVO) -->
+            <!-- PANEL EMERGENTE COMPACTO AL HACER CLIC EN UNA ANTENA (REGULA INTENSIDAD SI ESTÁ FÍSICAMENTE ENCHUFADA) -->
             <div id="inlineAntPanel" style="display:none; margin-top:12px; background:#0f172a; border:1.5px solid #00f2fe; border-radius:10px; padding:14px; box-shadow:0 8px 25px rgba(0,242,254,0.15);">
               <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
                 <div>
@@ -863,11 +863,13 @@
                   <strong style="margin-left:8px; font-size:14px; color:#fff;" id="inlineAntTitle">Poste Izquierdo — Superior (Boca SMA #1)</strong>
                 </div>
                 <div style="display:flex; gap:8px; align-items:center;">
-                  <button class="btn btn-dark" id="inlineAntToggleBtn" onclick="toggleGateAntEnabled(selectedModalAnt)" style="padding:5px 10px; font-size:11.5px;">
-                    ✅ Activa
-                  </button>
+                  <span class="badge badge-rose" id="inlineAntPhysBadge">⚪ SIN ANTENA EN BOCA SMA</span>
+                  <button class="btn btn-dark" onclick="detectGateAntennas()" style="padding:5px 10px; font-size:11.5px;">🔄 Re-Detectar</button>
                   <button class="btn btn-dark" onclick="closeAntennaModal()" style="padding:5px 10px; font-size:11.5px;">✕</button>
                 </div>
+              </div>
+              <div id="inlineAntDisconnectedMsg" style="display:none; font-size:12px; color:#fbbf24; margin-bottom:8px;">
+                ⚠️ Esta boca SMA no tiene antena enchufada al lector BRD-2204. Enchufa el cable coaxial en esta boca para que prenda automáticamente.
               </div>
               <div style="display:flex; align-items:center; gap:14px;">
                 <span style="font-size:12.5px; color:var(--muted); white-space:nowrap;">Intensidad de Ondas:</span>
@@ -876,7 +878,7 @@
                        onchange="setGateAntPower(selectedModalAnt, this.value)" />
                 <strong id="modalAntPwrVal" style="color:#00f2fe; font-size:16px; min-width:65px; text-align:right;">26 dBm</strong>
               </div>
-              <div style="display:flex; gap:8px; margin-top:10px;">
+              <div id="inlineAntPresets" style="display:flex; gap:8px; margin-top:10px;">
                 <button class="btn btn-dark" style="flex:1; font-size:11.5px;" onclick="quickSetSelectedAnt(16)">🔉 16 dBm (Corto)</button>
                 <button class="btn btn-dark" style="flex:1; font-size:11.5px;" onclick="quickSetSelectedAnt(24)">🎯 24 dBm (Medio)</button>
                 <button class="btn btn-primary" style="flex:1; font-size:11.5px;" onclick="quickSetSelectedAnt(30)">🚀 30 dBm (Largo)</button>
@@ -1008,9 +1010,9 @@
               📡 Detectar Qué Antenas Están Enchufadas (Test SWR Puertos 1–4)
             </button>
             <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:6px; margin-bottom:10px; text-align:center; font-size:11px;">
-              <div id="gateAntCard1" style="background:#090d16; padding:6px; border-radius:6px; border:1.5px solid #10b981;">
+              <div id="gateAntCard1" style="background:#090d16; padding:6px; border-radius:6px; border:1px solid #1e293b;">
                 <div style="color:var(--sky); font-weight:700;">ANT 1</div>
-                <div id="gateAntPlug1" style="font-size:9.5px; font-weight:800; color:#34d399; margin:2px 0;">🟢 ENCHUFADA</div>
+                <div id="gateAntPlug1" style="font-size:9.5px; font-weight:700; color:#64748b; margin:2px 0;">⚪ SIN ANTENA</div>
                 <div id="gateAntCnt1" style="font-weight:800; color:#fff;">0</div>
               </div>
               <div id="gateAntCard2" style="background:#090d16; padding:6px; border-radius:6px; border:1px solid #1e293b;">
@@ -1304,7 +1306,11 @@
     }
 
     function renderAllGateWaves(p1, p2, p3, p4, enArr, customColor) {
-      const en = enArr || (currentState && currentState.gate ? currentState.gate.enabled : [true, true, true, true]);
+      const g = currentState && currentState.gate ? currentState.gate : null;
+      const defaultEn = g && g.connected && g.plugged
+        ? [!!g.plugged[0], !!g.plugged[1], !!g.plugged[2], !!g.plugged[3]]
+        : [false, false, false, false];
+      const en = enArr || defaultEn;
       drawSingleAntennaWaves(1, p1, en[0], customColor);
       drawSingleAntennaWaves(2, p2, en[1], customColor);
       drawSingleAntennaWaves(3, p3, en[2], customColor);
@@ -1312,6 +1318,8 @@
     }
 
     function previewGateAntPower(ant, dbm) {
+      const g = currentState && currentState.gate ? currentState.gate : null;
+      if (!g || !g.connected || !g.plugged || !g.plugged[ant - 1]) return;
       const p = parseInt(dbm, 10);
       document.getElementById('sliderAnt' + ant).value = p;
       document.getElementById('lblAntPwr' + ant).textContent = p + ' dBm';
@@ -1411,6 +1419,32 @@
       renderState(st);
     }
 
+    function updateInlineAntModalState(ant) {
+      const g = currentState && currentState.gate ? currentState.gate : null;
+      const physPlugged = !!(g && g.connected && g.plugged && g.plugged[ant - 1]);
+      const pwr = g ? g.powers[ant - 1] : parseInt(document.getElementById('sliderAnt' + ant).value, 10);
+      const rl = (g && g.returnLoss && g.returnLoss[ant - 1] > 0) ? ` (${g.returnLoss[ant - 1]} dB)` : '';
+      const badge = document.getElementById('inlineAntPhysBadge');
+      const msg = document.getElementById('inlineAntDisconnectedMsg');
+      const sl = document.getElementById('modalAntSlider');
+      const presets = document.getElementById('inlineAntPresets');
+      sl.value = pwr;
+      sl.disabled = !physPlugged;
+      sl.style.opacity = physPlugged ? '1' : '0.35';
+      document.getElementById('modalAntPwrVal').textContent = physPlugged ? (pwr + ' dBm') : 'SIN ANTENA';
+      if (presets) presets.style.opacity = physPlugged ? '1' : '0.35';
+      if ( presets ) presets.style.pointerEvents = physPlugged ? 'auto' : 'none';
+      if (physPlugged) {
+        badge.className = 'badge badge-emerald';
+        badge.textContent = '🟢 ENCHUFADA AL LECTOR' + rl;
+        msg.style.display = 'none';
+      } else {
+        badge.className = 'badge badge-rose';
+        badge.textContent = g && g.connected ? '⚪ SIN ANTENA EN BOCA SMA #' + ant : '🔌 LECTOR DESCONECTADO';
+        msg.style.display = 'block';
+      }
+    }
+
     function selectGateAntenna(ant) {
       selectedModalAnt = ant;
       const titles = {
@@ -1421,14 +1455,7 @@
       };
       document.getElementById('inlineAntBadge').textContent = `ANTENA #${ant} SELECCIONADA`;
       document.getElementById('inlineAntTitle').textContent = titles[ant];
-
-      const pwr = currentState && currentState.gate ? currentState.gate.powers[ant - 1] : parseInt(document.getElementById('sliderAnt' + ant).value, 10);
-      const en = currentState && currentState.gate ? currentState.gate.enabled[ant - 1] : true;
-      document.getElementById('modalAntSlider').value = pwr;
-      document.getElementById('modalAntPwrVal').textContent = pwr + ' dBm';
-      const tBtn = document.getElementById('inlineAntToggleBtn');
-      tBtn.textContent = en ? '✅ Antena Activa (Apagar)' : '🚫 Antena Apagada (Encender)';
-      tBtn.className = 'btn ' + (en ? 'btn-dark' : 'btn-rose');
+      updateInlineAntModalState(ant);
 
       for (let i = 1; i <= 4; i++) {
         const box = document.getElementById('svgAntBox' + i);
@@ -1629,16 +1656,26 @@
 
         if (!isCalibratingGate) {
           document.getElementById('gateCalibReport').textContent = g.calibrationReport;
+          const activeWaves = [false, false, false, false];
           for (let i = 1; i <= 4; i++) {
             const p = g.powers[i - 1];
-            const en = g.enabled[i - 1];
-            document.getElementById('sliderAnt' + i).value = p;
-            document.getElementById('lblAntPwr' + i).textContent = p + ' dBm';
-            document.getElementById('svgAntPwr' + i).textContent = en ? (p + ' dBm') : 'OFF';
-            document.getElementById('svgAntBox' + i).setAttribute('stroke', en ? '#00f2fe' : '#ef4444');
-            document.getElementById('svgAntRing' + i).setAttribute('stroke', en ? '#00f2fe' : '#475569');
+            const physConnected = !!(g.connected && g.plugged && g.plugged[i - 1]);
+            activeWaves[i - 1] = physConnected;
+            const sl = document.getElementById('sliderAnt' + i);
+            sl.value = p;
+            sl.disabled = !physConnected;
+            sl.style.opacity = physConnected ? '1' : '0.35';
+            document.getElementById('lblAntPwr' + i).textContent = physConnected ? (p + ' dBm') : 'SIN ANTENA';
+            document.getElementById('lblAntPwr' + i).style.color = physConnected ? '#00f2fe' : '#64748b';
+            document.getElementById('svgAntPwr' + i).textContent = physConnected ? (p + ' dBm') : 'OFF';
+            document.getElementById('svgAntPwr' + i).setAttribute('fill', physConnected ? '#ffffff' : '#64748b');
+            document.getElementById('svgAntBox' + i).setAttribute('stroke', physConnected ? '#00f2fe' : '#334155');
+            document.getElementById('svgAntRing' + i).setAttribute('stroke', physConnected ? '#00f2fe' : '#475569');
           }
-          renderAllGateWaves(g.powers[0], g.powers[1], g.powers[2], g.powers[3], g.enabled);
+          renderAllGateWaves(g.powers[0], g.powers[1], g.powers[2], g.powers[3], activeWaves);
+          if (document.getElementById('inlineAntPanel').style.display === 'block') {
+            updateInlineAntModalState(selectedModalAnt);
+          }
         }
 
         // Actualizar Luz Superior (GPO O1 Verde / GPO O2 Roja) y Parlante al costado (GPO O3)
@@ -1665,8 +1702,8 @@
       }
     }
 
-    // Dibujar ondas iniciales al cargar la página
-    renderAllGateWaves(26, 26, 26, 26, [true, true, true, true]);
+    // Iniciar sin ondas hasta confirmar qué antenas están físicamente conectadas al lector
+    renderAllGateWaves(26, 26, 26, 26, [false, false, false, false]);
 
     async function pollLoop() {
       try {
