@@ -1680,7 +1680,7 @@ namespace ZyntraRfidLab
                 if (probeAnt >= 0 && probeAnt < 4)
                 {
                     AntennaReturnLossDb[probeAnt] = Math.Round(diff / 5.0, 1);
-                    bool isPlugged = (fwd > 0 && diff >= 65);
+                    bool isPlugged = (fwd > 0 && diff >= 35);
                     AntennaPlugged[probeAnt] = isPlugged;
                     AntennaEnabled[probeAnt] = isPlugged;
                 }
@@ -2129,14 +2129,15 @@ namespace ZyntraRfidLab
                         if (Gate.Connected && !Gate.DetectingAntennas)
                         {
                             long idleMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - Gate.LastRxMs;
-                            if (idleMs > 7000)
+                            if (idleMs > 9000)
                             {
                                 Gate.DisconnectTcp();
                                 UpdateWindowLabel();
                             }
-                            else if (idleMs > 4000)
+                            else if (idleMs > 4500)
                             {
-                                Task.Run(() => Gate.DetectPhysicalAntennas());
+                                // Lightweight heartbeat when idle so LastRxMs refreshes if reader is still alive
+                                Gate.SendTcpFrame(GatePortalManager.BuildGrpFrame(0x01, 0xF3, new byte[] { 0x00, 0x00, 0x00, 0x00 }));
                             }
                         }
                         if (tick % 2 == 0)
