@@ -2145,8 +2145,17 @@ namespace ZyntraRfidLab
                             }
                             else if (idleMs > 4500)
                             {
-                                // Lightweight heartbeat when idle so LastRxMs refreshes if reader is still alive
-                                Gate.SendTcpFrame(GatePortalManager.BuildGrpFrame(0x01, 0xF3, new byte[] { 0x00, 0x00, 0x00, 0x00 }));
+                                bool anyPlugged = Gate.AntennaPlugged[0] || Gate.AntennaPlugged[1] || Gate.AntennaPlugged[2] || Gate.AntennaPlugged[3];
+                                if (!anyPlugged && tick % 3 == 0)
+                                {
+                                    // Auto-detect when an antenna is plugged in while idle with 0 antennas
+                                    Task.Run(() => Gate.DetectPhysicalAntennas());
+                                }
+                                else
+                                {
+                                    // Lightweight heartbeat when idle so LastRxMs refreshes if reader is still alive
+                                    Gate.SendTcpFrame(GatePortalManager.BuildGrpFrame(0x01, 0xF3, new byte[] { 0x00, 0x00, 0x00, 0x00 }));
+                                }
                             }
                         }
                         if (tick % 2 == 0)
