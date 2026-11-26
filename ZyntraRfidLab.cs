@@ -1688,7 +1688,7 @@ namespace ZyntraRfidLab
                 if (probeAnt >= 0 && probeAnt < 4)
                 {
                     AntennaReturnLossDb[probeAnt] = Math.Round(diff / 5.0, 1);
-                    bool isPlugged = (fwd > 0 && diff >= 35);
+                    bool isPlugged = (fwd > 0 && diff >= 24);
                     AntennaPlugged[probeAnt] = isPlugged;
                     AntennaEnabled[probeAnt] = isPlugged;
                     _swrReplyEvent.Set();
