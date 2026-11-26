@@ -1232,10 +1232,12 @@ namespace ZyntraRfidLab
             {
                 StatusText = "Midiendo SWR en puertos SMA 1 a 4 para detectar antenas enchufadas...";
                 SendTcpFrame(BuildGrpFrame(0x01, 0x57, new byte[] { 0x00 }));
-                Thread.Sleep(350);
+                Thread.Sleep(250);
+                SendTcpFrame(BuildGrpPassCrpFrame(0x02, 0xFF, null));
+                Thread.Sleep(450);
                 // Ensure all 4 hardware ports are enabled in Ex10V2 (0x0F) before probing SWR
                 SendTcpFrame(BuildGrpPassCrpFrame(0x02, 0x07, new byte[] { 0x0F }));
-                Thread.Sleep(580);
+                Thread.Sleep(650);
 
                 for (int i = 0; i < 4; i++)
                 {
