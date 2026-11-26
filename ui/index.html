@@ -140,6 +140,22 @@
       padding-bottom: 12px;
       margin-bottom: 14px;
     }
+    .collapsible-header {
+      cursor: pointer;
+      user-select: none;
+      transition: opacity 0.15s;
+    }
+    .collapsible-header:hover { opacity: 0.88; }
+    .collapse-chevron {
+      font-size: 13px;
+      color: var(--muted);
+      margin-left: 6px;
+      transition: transform 0.2s;
+    }
+    .card.collapsed { padding-top: 12px; padding-bottom: 12px; }
+    .card.collapsed .card-header { border-bottom: none; padding-bottom: 0; margin-bottom: 0; }
+    .card.collapsed .card-body { display: none; }
+    .card.collapsed .collapse-chevron { transform: rotate(-90deg); }
     .card-title {
       font-size: 15px;
       font-weight: 700;
@@ -909,11 +925,15 @@
         <div style="display:flex; flex-direction:column; gap:16px;">
 
           <!-- CONTROL LATERAL DE GPO (LUZ SUPERIOR Y PARLANTE DEL ARCO) -->
-          <div class="card">
-            <div class="card-header">
+          <div class="card" id="gateGpoCard">
+            <div class="card-header collapsible-header" onclick="toggleCardCollapse('gateGpoCard')" title="Clic para contraer o expandir">
               <div class="card-title">🚨 Salidas GPO del Arco (Luz Superior y Parlante)</div>
-              <span class="badge badge-sky">Bornera BRD-2204</span>
+              <div style="display:flex; align-items:center; gap:6px;">
+                <span class="badge badge-sky">Bornera BRD-2204</span>
+                <span class="collapse-chevron">▾</span>
+              </div>
             </div>
+            <div class="card-body">
             <div style="font-size:12px; color:var(--muted); margin-bottom:10px;">
               Prueba las salidas físicas del lector (también puedes hacer clic directo sobre la <strong>luz de arriba</strong> o el <strong>parlante del costado</strong> en el dibujo):
             </div>
@@ -966,13 +986,18 @@
                 <input type="range" id="sliderAnt4" min="10" max="33" value="26" onchange="setGateAntPower(4, this.value)" oninput="previewGateAntPower(4, this.value)" />
               </div>
             </div>
+            </div>
           </div>
 
-          <div class="card">
-            <div class="card-header">
+          <div class="card" id="gateConnCard">
+            <div class="card-header collapsible-header" onclick="toggleCardCollapse('gateConnCard')" title="Clic para contraer o expandir">
               <div class="card-title">🌐 Conexión del Lector BRD-2204 (Cable USB-Red / RJ-45)</div>
-              <span class="badge badge-amber" id="gateUsbLanBadge">Detectando Adaptador...</span>
+              <div style="display:flex; align-items:center; gap:6px;">
+                <span class="badge badge-amber" id="gateUsbLanBadge">Detectando Adaptador...</span>
+                <span class="collapse-chevron">▾</span>
+              </div>
             </div>
+            <div class="card-body">
 
             <div id="gateUsbLanInfo" style="font-size:12px; background:#090d16; padding:10px; border-radius:8px; border:1px solid #1e293b; color:#cbd5e1; margin-bottom:10px; line-height:1.45;">
               Verificando adaptador USB-Ethernet y cable de red hacia el BRD-2204...
@@ -993,6 +1018,7 @@
               <button class="btn btn-primary" onclick="connectGateTcp()">🔌 Conectar</button>
             </div>
             <div id="gateConnStatus" style="font-size:12px; color:var(--muted); margin-top:4px;"></div>
+            </div>
           </div>
 
           <div class="card">
@@ -1031,7 +1057,7 @@
                 <div id="gateAntCnt4" style="font-weight:800; color:#fff;">0</div>
               </div>
             </div>
-            <div class="table-wrap" style="max-height:170px;">
+            <div class="table-wrap" style="max-height:260px;">
               <table>
                 <thead>
                   <tr>
@@ -1082,6 +1108,22 @@
       btn.textContent = webAudioEnabled ? '🔊 Beep: ON' : '🔇 Beep: OFF';
       if (webAudioEnabled) playBrowserBeep(1400, 80);
     }
+
+    function toggleCardCollapse(cardId) {
+      const el = document.getElementById(cardId);
+      if (!el) return;
+      const isCol = el.classList.toggle('collapsed');
+      try { localStorage.setItem('collapse_' + cardId, isCol ? '1' : '0'); } catch (e) {}
+    }
+
+    ['gateGpoCard', 'gateConnCard'].forEach(id => {
+      try {
+        if (localStorage.getItem('collapse_' + id) === '1') {
+          const el = document.getElementById(id);
+          if (el) el.classList.add('collapsed');
+        }
+      } catch (e) {}
+    });
 
     function switchMainTab(tab) {
       ['dc06', 'dc01', 'gate'].forEach(t => {
